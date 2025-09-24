@@ -44,9 +44,9 @@ def get_real_ip(req):
         return req.headers["X-Forwarded-For"].split(",")[0].strip()
     return req.remote_addr
 
-# VPN判定: 特定IPだけBAN、誤爆ゼロ
+# VPN判定（特定IPのみBAN、誤爆ゼロ）
 VPN_IPS = [
-    "133.11.0.0/16",  # 筑波大学VPNなど
+    "133.11.0.0/16",  # 筑波大VPNなど
     "133.11.128.0/17"
 ]
 
@@ -57,6 +57,7 @@ def is_vpn(ip):
             return True
     return False
 
+# 認証ページ（利用規約チェック付き）
 @app.route("/")
 def index():
     auth_url = (
@@ -67,27 +68,26 @@ def index():
 
     html = f"""
     <h1>Discord認証ページ</h1>
-    <form id="authForm" action="{auth_url}" method="get" onsubmit="return checkAgreement()">
-        <p>
-            <input type="checkbox" id="agree" name="agree">
-            <label for="agree">利用規約に同意します (<a href='/terms' target='_blank'>利用規約を見る</a>)</label>
-        </p>
-        <button type="submit">Discordで認証する</button>
-    </form>
+    <p>
+        <input type="checkbox" id="agree" name="agree">
+        <label for="agree">利用規約に同意します (<a href='/terms' target='_blank'>利用規約を見る</a>)</label>
+    </p>
+    <button onclick="checkAndRedirect()">Discordで認証する</button>
 
     <script>
-        function checkAgreement() {{
-            var check = document.getElementById('agree');
-            if (!check.checked) {{
-                alert('利用規約に同意してください。');
-                return false;
-            }}
-            return true;
+    function checkAndRedirect() {{
+        var check = document.getElementById('agree');
+        if (!check.checked) {{
+            alert('利用規約に同意してください。');
+            return;
         }}
+        window.location.href = "{auth_url}";
+    }}
     </script>
     """
     return html
 
+# 利用規約ページ
 @app.route("/terms")
 def terms():
     html = """
@@ -104,12 +104,14 @@ def terms():
     """
     return html
 
+# コールバック（認証処理）
 @app.route("/callback")
 def callback():
     code = request.args.get("code")
     if not code:
         return "Error: no code", 400
 
+    # Discordトークン取得
     data = {
         "client_id": CLIENT_ID,
         "client_secret": CLIENT_SECRET,
@@ -124,6 +126,7 @@ def callback():
     tokens = r.json()
     access_token = tokens["access_token"]
 
+    # ユーザー情報取得
     user = requests.get(
         "https://discord.com/api/users/@me",
         headers={"Authorization": f"Bearer {access_token}"}
@@ -167,6 +170,7 @@ def callback():
     else:
         return f"❌ ロール付与失敗: {r.text}", 500
 
+# 管理者ログ確認
 @app.route("/logs")
 def logs():
     pw = request.args.get("pw")
