@@ -2,7 +2,7 @@ import os
 import requests
 import psycopg2
 from flask import Flask, request, abort
-from datetime import datetime
+import ipaddress
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "change-this")
@@ -10,7 +10,7 @@ app.secret_key = os.getenv("SECRET_KEY", "change-this")
 # Discord設定
 CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
-REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI")
+REDIRECT_URI = os.getenv("REDIRECT_URI")
 BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 GUILD_ID = int(os.getenv("DISCORD_GUILD_ID"))
 ROLE_ID = int(os.getenv("DISCORD_ROLE_ID"))
@@ -19,7 +19,7 @@ ROLE_ID = int(os.getenv("DISCORD_ROLE_ID"))
 DATABASE_URL = os.getenv("DATABASE_URL")
 LOGS_PASSWORD = os.getenv("LOGS_PASSWORD", "secretpassword")
 
-# 初回DBセットアップ
+# DB初期化
 def init_db():
     conn = psycopg2.connect(DATABASE_URL, sslmode="require")
     cur = conn.cursor()
@@ -29,6 +29,7 @@ def init_db():
             discord_id TEXT NOT NULL,
             email TEXT,
             ip TEXT,
+            agreed_terms BOOLEAN DEFAULT TRUE,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -43,10 +44,18 @@ def get_real_ip(req):
         return req.headers["X-Forwarded-For"].split(",")[0].strip()
     return req.remote_addr
 
-# 簡易VPN判定（サンプル: localhostはVPNなし扱い）
+# VPN判定: 特定IPだけBAN、誤爆ゼロ
+VPN_IPS = [
+    "133.11.0.0/16",  # 筑波大学VPNなど
+    "133.11.128.0/17"
+]
+
 def is_vpn(ip):
-    # TODO: 外部サービスで判定する場合ここを置き換え
-    return False  # デフォルトは無効、誤爆なし
+    ip_addr = ipaddress.ip_address(ip)
+    for net in VPN_IPS:
+        if ip_addr in ipaddress.ip_network(net):
+            return True
+    return False
 
 @app.route("/")
 def index():
@@ -55,7 +64,45 @@ def index():
         f"?client_id={CLIENT_ID}&redirect_uri={REDIRECT_URI}"
         "&response_type=code&scope=identify%20email%20guilds.join"
     )
-    return f'<a href="{auth_url}">Discordで認証する</a>'
+
+    html = f"""
+    <h1>Discord認証ページ</h1>
+    <form id="authForm" action="{auth_url}" method="get" onsubmit="return checkAgreement()">
+        <p>
+            <input type="checkbox" id="agree" name="agree">
+            <label for="agree">利用規約に同意します (<a href='/terms' target='_blank'>利用規約を見る</a>)</label>
+        </p>
+        <button type="submit">Discordで認証する</button>
+    </form>
+
+    <script>
+        function checkAgreement() {{
+            var check = document.getElementById('agree');
+            if (!check.checked) {{
+                alert('利用規約に同意してください。');
+                return false;
+            }}
+            return true;
+        }}
+    </script>
+    """
+    return html
+
+@app.route("/terms")
+def terms():
+    html = """
+    <h1>Discord認証サービス 利用規約</h1>
+    <ol>
+        <li>取得情報: Discord ID, メールアドレス, IP</li>
+        <li>保存: 通常1週間、荒らしは永久保存</li>
+        <li>複数アカウントや特定VPNは禁止</li>
+        <li>認証成功者にロール付与、禁止者は付与なし</li>
+        <li>管理者はログ確認可能</li>
+        <li>規約変更は予告なく行われる</li>
+    </ol>
+    <p>制定日: 2025年9月24日</p>
+    """
+    return html
 
 @app.route("/callback")
 def callback():
@@ -71,8 +118,8 @@ def callback():
         "redirect_uri": REDIRECT_URI,
         "scope": "identify email guilds.join",
     }
-    headers = {"Content-Type": "application/x-www-form-urlencoded"}
-    r = requests.post("https://discord.com/api/oauth2/token", data=data, headers=headers)
+    r = requests.post("https://discord.com/api/oauth2/token", data=data,
+                      headers={"Content-Type": "application/x-www-form-urlencoded"})
     r.raise_for_status()
     tokens = r.json()
     access_token = tokens["access_token"]
@@ -88,7 +135,7 @@ def callback():
 
     # VPN判定
     if is_vpn(ip):
-        return "⚠ VPNやめてね。ロール付与されません。"
+        return "⚠ VPN（特定IP）利用不可。ロール付与されません。"
 
     conn = psycopg2.connect(DATABASE_URL, sslmode="require")
     cur = conn.cursor()
@@ -101,8 +148,11 @@ def callback():
         conn.close()
         return "⚠ 同一IPで複数アカウント認証はできません。管理者に相談してください。"
 
-    # 通常ユーザー: DB保存
-    cur.execute("INSERT INTO auth_logs (discord_id, email, ip) VALUES (%s,%s,%s)", (discord_id, email, ip))
+    # DB保存＋同意記録
+    cur.execute(
+        "INSERT INTO auth_logs (discord_id,email,ip,agreed_terms) VALUES (%s,%s,%s,%s)",
+        (discord_id,email,ip,True)
+    )
     conn.commit()
     cur.close()
     conn.close()
@@ -113,7 +163,7 @@ def callback():
     r = requests.put(url, headers=headers)
 
     if r.status_code in (200, 204):
-        return f"✅ 認証成功！ メール: {email} / IP: {ip} （保存済み）"
+        return f"✅ 認証成功！ メール: {email} / IP: {ip} （同意記録済み）"
     else:
         return f"❌ ロール付与失敗: {r.text}", 500
 
@@ -123,19 +173,16 @@ def logs():
     if pw != LOGS_PASSWORD:
         abort(403)
 
-    try:
-        conn = psycopg2.connect(DATABASE_URL, sslmode="require")
-        cur = conn.cursor()
-        cur.execute("SELECT discord_id,email,ip,created_at FROM auth_logs ORDER BY created_at DESC")
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
-    except Exception as e:
-        return f"❌ DB取得失敗: {e}",500
+    conn = psycopg2.connect(DATABASE_URL, sslmode="require")
+    cur = conn.cursor()
+    cur.execute("SELECT discord_id,email,ip,agreed_terms,created_at FROM auth_logs ORDER BY created_at DESC")
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
 
-    html = "<h2>認証ログ</h2><table border='1'><tr><th>Discord ID</th><th>Email</th><th>IP</th><th>日時</th></tr>"
+    html = "<h2>認証ログ</h2><table border='1'><tr><th>Discord ID</th><th>Email</th><th>IP</th><th>同意</th><th>日時</th></tr>"
     for row in rows:
-        html += f"<tr><td>{row[0]}</td><td>{row[1]}</td><td>{row[2]}</td><td>{row[3]}</td></tr>"
+        html += f"<tr><td>{row[0]}</td><td>{row[1]}</td><td>{row[2]}</td><td>{row[3]}</td><td>{row[4]}</td></tr>"
     html += "</table>"
     return html
 
