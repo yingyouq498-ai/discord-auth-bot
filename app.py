@@ -12,6 +12,11 @@ BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 GUILD_ID = int(os.getenv("DISCORD_GUILD_ID"))
 ROLE_ID = int(os.getenv("DISCORD_ROLE_ID"))
 
+def get_real_ip(req):
+    if "X-Forwarded-For" in req.headers:
+        return req.headers["X-Forwarded-For"].split(",")[0].strip()
+    return req.remote_addr
+
 @app.route("/")
 def index():
     auth_url = (
@@ -27,7 +32,7 @@ def callback():
     if not code:
         return "Error: no code", 400
 
-    # Discord API でアクセストークン取得
+    # アクセストークン取得
     data = {
         "client_id": CLIENT_ID,
         "client_secret": CLIENT_SECRET,
@@ -50,7 +55,7 @@ def callback():
 
     discord_id = user["id"]
     email = user.get("email")
-    ip = request.remote_addr  # ← アクセス元のIPを取得
+    ip = get_real_ip(request)  # ← ここで本物のIPを取得
 
     # ロール付与
     headers = {"Authorization": f"Bot {BOT_TOKEN}"}
