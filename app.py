@@ -27,6 +27,7 @@ def callback():
     if not code:
         return "Error: no code", 400
 
+    # Discord API でアクセストークン取得
     data = {
         "client_id": CLIENT_ID,
         "client_secret": CLIENT_SECRET,
@@ -41,6 +42,7 @@ def callback():
     tokens = r.json()
     access_token = tokens["access_token"]
 
+    # ユーザー情報取得
     user = requests.get(
         "https://discord.com/api/users/@me",
         headers={"Authorization": f"Bearer {access_token}"}
@@ -48,13 +50,15 @@ def callback():
 
     discord_id = user["id"]
     email = user.get("email")
+    ip = request.remote_addr  # ← アクセス元のIPを取得
 
+    # ロール付与
     headers = {"Authorization": f"Bot {BOT_TOKEN}"}
     url = f"https://discord.com/api/guilds/{GUILD_ID}/members/{discord_id}/roles/{ROLE_ID}"
     r = requests.put(url, headers=headers)
 
     if r.status_code in (200, 204):
-        return f"✅ 認証成功！ メール: {email}"
+        return f"✅ 認証成功！ メール: {email} / IP: {ip}"
     else:
         return f"❌ ロール付与失敗: {r.text}", 500
 
