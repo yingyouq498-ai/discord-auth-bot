@@ -10,7 +10,8 @@ app.secret_key = os.getenv("SECRET_KEY", "change-this")
 # Discord設定
 CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
-REDIRECT_URI = os.getenv("REDIRECT_URI")
+# Discordに登録したリダイレクトURIと完全一致させること
+REDIRECT_URI = "https://discord-auth-bot-ngw0.onrender.com/callback"
 BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 GUILD_ID = int(os.getenv("DISCORD_GUILD_ID"))
 ROLE_ID = int(os.getenv("DISCORD_ROLE_ID"))
