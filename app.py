@@ -6,7 +6,7 @@ from flask import Flask, request
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "change-this")
 
-# Discord関連
+# Discord設定
 CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
 REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI")
@@ -15,7 +15,7 @@ GUILD_ID = int(os.getenv("DISCORD_GUILD_ID"))
 ROLE_ID = int(os.getenv("DISCORD_ROLE_ID"))
 
 # データベース
-DATABASE_URL = os.getenv("DATABASE_URL")  # 先ほどの Render Postgres URL
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 # 本物のIPを取得
 def get_real_ip(req):
@@ -23,22 +23,29 @@ def get_real_ip(req):
         return req.headers["X-Forwarded-For"].split(",")[0].strip()
     return req.remote_addr
 
-# 初回起動時にテーブル作成
+# テーブル作成（必ず起動時に呼ぶ）
 def init_db():
-    conn = psycopg2.connect(DATABASE_URL, sslmode="require")
-    cur = conn.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS auth_logs (
-            id SERIAL PRIMARY KEY,
-            discord_id TEXT NOT NULL,
-            email TEXT,
-            ip TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    conn.commit()
-    cur.close()
-    conn.close()
+    try:
+        conn = psycopg2.connect(DATABASE_URL, sslmode="require")
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS auth_logs (
+                id SERIAL PRIMARY KEY,
+                discord_id TEXT NOT NULL,
+                email TEXT,
+                ip TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.commit()
+        cur.close()
+        conn.close()
+        print("✅ auth_logs テーブル準備完了")
+    except Exception as e:
+        print(f"❌ DB初期化失敗: {e}")
+
+# Flaskアプリ起動時に必ずテーブル作成
+init_db()
 
 @app.route("/")
 def index():
@@ -80,7 +87,7 @@ def callback():
     email = user.get("email")
     ip = get_real_ip(request)
 
-    # データベースに保存
+    # DBに保存
     try:
         conn = psycopg2.connect(DATABASE_URL, sslmode="require")
         cur = conn.cursor()
@@ -105,5 +112,4 @@ def callback():
         return f"❌ ロール付与失敗: {r.text}", 500
 
 if __name__ == "__main__":
-    init_db()
     app.run(host="0.0.0.0", port=5000)
