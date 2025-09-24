@@ -2,6 +2,7 @@ import os
 import requests
 import psycopg2
 from flask import Flask, request, abort
+from datetime import datetime
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "change-this")
@@ -42,6 +43,11 @@ def get_real_ip(req):
         return req.headers["X-Forwarded-For"].split(",")[0].strip()
     return req.remote_addr
 
+# 簡易VPN判定（サンプル: localhostはVPNなし扱い）
+def is_vpn(ip):
+    # TODO: 外部サービスで判定する場合ここを置き換え
+    return False  # デフォルトは無効、誤爆なし
+
 @app.route("/")
 def index():
     auth_url = (
@@ -57,7 +63,6 @@ def callback():
     if not code:
         return "Error: no code", 400
 
-    # Discordアクセストークン取得
     data = {
         "client_id": CLIENT_ID,
         "client_secret": CLIENT_SECRET,
@@ -81,7 +86,10 @@ def callback():
     email = user.get("email")
     ip = get_real_ip(request)
 
-    # DB接続
+    # VPN判定
+    if is_vpn(ip):
+        return "⚠ VPNやめてね。ロール付与されません。"
+
     conn = psycopg2.connect(DATABASE_URL, sslmode="require")
     cur = conn.cursor()
 
@@ -109,7 +117,6 @@ def callback():
     else:
         return f"❌ ロール付与失敗: {r.text}", 500
 
-# 管理者向けログ閲覧
 @app.route("/logs")
 def logs():
     pw = request.args.get("pw")
