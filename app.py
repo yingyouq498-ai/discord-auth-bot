@@ -174,4 +174,9 @@ def terms():
 # メイン
 # ==============================
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))    
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    import traceback
+    return f"<pre>Internal Server Error\n{traceback.format_exc()}</pre>", 500
