@@ -1,12 +1,12 @@
 import os
 import psycopg2
 import requests
-from flask import Flask, request, redirect
+from flask import Flask, request
 
 app = Flask(__name__)
 
 # ==============================
-# 環境変数（Render の Dashboard に設定）
+# 環境変数（Renderに設定）
 # ==============================
 DISCORD_CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
 DISCORD_CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
@@ -18,11 +18,12 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 LOGS_PASSWORD = os.getenv("LOGS_PASSWORD", "changeme")
 
 # ==============================
-# DB 初期化
+# DB初期化（テーブル作成・カラム追加対応済み）
 # ==============================
 def init_db():
-    conn = psycopg2.connect(DATABASE_URL)
+    conn = psycopg2.connect(DATABASE_URL, sslmode="require")
     cur = conn.cursor()
+    # テーブル作成（存在しなければ）
     cur.execute("""
         CREATE TABLE IF NOT EXISTS auth_logs (
             id SERIAL PRIMARY KEY,
@@ -36,11 +37,12 @@ def init_db():
     conn.commit()
     cur.close()
     conn.close()
+    print("DB initialized")
 
 init_db()
 
 # ==============================
-# 認証スタート
+# /start: 認証ページ
 # ==============================
 @app.route("/start")
 def start():
@@ -53,13 +55,13 @@ def start():
     )
     return f"""
     <h1>Discord 認証ページ</h1>
-    <p>下のボタンを押して認証を完了してください。</p>
-    <a href="{url}"><button>Discordでログイン</button></a>
+    <p>下のボタンで認証してください。</p>
+    <a href="{url}"><button>Discordで認証する</button></a>
     <p>このサービスを利用することで、<a href="/terms">利用規約</a>に同意したものとみなされます。</p>
     """
 
 # ==============================
-# Discord OAuth2 Callback
+# /callback: Discord OAuth2 コールバック
 # ==============================
 @app.route("/callback")
 def callback():
@@ -92,8 +94,8 @@ def callback():
     # IP取得
     ip = request.headers.get("X-Forwarded-For", request.remote_addr)
 
-    # DB保存（荒らしIPは is_blacklisted=True）
-    conn = psycopg2.connect(DATABASE_URL)
+    # DB保存
+    conn = psycopg2.connect(DATABASE_URL, sslmode="require")
     cur = conn.cursor()
     cur.execute(
         "INSERT INTO auth_logs (discord_id, email, ip, is_blacklisted) VALUES (%s, %s, %s, %s)",
@@ -108,13 +110,13 @@ def callback():
     headers = {"Authorization": f"Bot {DISCORD_BOT_TOKEN}"}
     role_res = requests.put(url, headers=headers)
 
-    if role_res.status_code == 204:
+    if role_res.status_code in (200, 204):
         return f"✅ 認証成功！ メール: {email} / IP: {ip} （保存済み）"
     else:
-        return f"❌ ロール付与失敗: {role_res.text}"
+        return f"❌ ロール付与失敗: {role_res.status_code} {role_res.text}"
 
 # ==============================
-# ログ閲覧
+# /view_logs: ログ閲覧（管理者用）
 # ==============================
 @app.route("/view_logs")
 def view_logs():
@@ -122,7 +124,7 @@ def view_logs():
     if password != LOGS_PASSWORD:
         return "❌ アクセス拒否: パスワードが違います"
 
-    conn = psycopg2.connect(DATABASE_URL)
+    conn = psycopg2.connect(DATABASE_URL, sslmode="require")
     cur = conn.cursor()
     cur.execute("SELECT discord_id, email, ip, created_at, is_blacklisted FROM auth_logs ORDER BY created_at DESC LIMIT 50")
     rows = cur.fetchall()
@@ -136,37 +138,37 @@ def view_logs():
     return html
 
 # ==============================
-# 利用規約
+# /terms: 利用規約ページ
 # ==============================
 @app.route("/terms")
 def terms():
     return """
-    <h1>利用規約</h1>
-    <p>本サービスを利用することで、以下の規約に同意したものとみなされます。</p>
-    <h2>第2条（取得する情報）</h2>
+    <h1>利用規約（長文版）</h1>
+    <p>本サービスを利用することで以下の規約に同意したものとみなされます。</p>
+    <h2>第1条（取得情報）</h2>
     <ul>
-      <li>Discord アカウントに紐づくユーザーID</li>
-      <li>Discord に登録されているメールアドレス</li>
-      <li>アクセス時のIPアドレス</li>
+      <li>Discord ユーザーID</li>
+      <li>Discord メールアドレス</li>
+      <li>アクセスIP</li>
       <li>認証日時</li>
     </ul>
-    <h2>第3条（利用目的）</h2>
+    <h2>第2条（利用目的）</h2>
     <ul>
-      <li>認証済みユーザーへの自動ロール付与</li>
-      <li>荒らし防止・不正利用対策</li>
+      <li>認証済みユーザーへのロール付与</li>
+      <li>荒らし・複垢・VPNの抑止</li>
+      <li>サービス運営の安全確保</li>
     </ul>
-    <h2>第4条（保存期間）</h2>
+    <h2>第3条（保存期間）</h2>
     <ul>
-      <li>通常ユーザーの情報は1週間で自動削除</li>
-      <li>荒らし・迷惑行為ユーザーは無期限保存</li>
+      <li>通常ユーザー情報：取得から1週間で自動削除</li>
+      <li>荒らし・迷惑行為ユーザー：無期限保存</li>
     </ul>
-    <h2>第5条（禁止事項）</h2>
+    <h2>第4条（禁止事項）</h2>
     <ul>
       <li>複数アカウントの不正利用</li>
-      <li>VPNや匿名回線の利用</li>
-      <li>サービスの妨害</li>
+      <li>VPNや匿名回線の使用</li>
+      <li>サービス妨害行為</li>
     </ul>
-    <p>詳細版は運営までお問い合わせください。</p>
     <p><a href="/start">認証ページに戻る</a></p>
     """
 
@@ -174,9 +176,4 @@ def terms():
 # メイン
 # ==============================
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))    
-
-@app.errorhandler(Exception)
-def handle_exception(e):
-    import traceback
-    return f"<pre>Internal Server Error\n{traceback.format_exc()}</pre>", 500
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
