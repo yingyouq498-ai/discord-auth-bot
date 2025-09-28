@@ -1,4 +1,4 @@
-# main.py（削除後待機で確実版 nuke）
+# main.py（Unknown Channel エラー回避版 nuke）
 import os
 import asyncio
 import logging
@@ -91,7 +91,7 @@ async def nuke(ctx):
             logger.exception(f"チャンネル削除失敗: {e}")
         await asyncio.sleep(0.05)
 
-    # 削除完了後に長めに待機
+    # 削除完了後に十分待機（Discord 内部反映のため）
     await asyncio.sleep(3)
 
     # 3. チャンネル作成
@@ -106,7 +106,7 @@ async def nuke(ctx):
             logger.exception(f"チャンネル作成失敗: {name}: {e}")
         await asyncio.sleep(0.3)
 
-    # 4. メッセージ送信
+    # 4. メッセージ送信（作成済みチャンネルのみ）
     await ctx.send("✉️ 各チャンネルにメッセージ送信...")
     for ch in created_channels:
         for msg in CHANNEL_MESSAGES:
