@@ -1,4 +1,4 @@
-# main.py（修正版 nuke）
+# main.py（順序保証付き nuke）
 import os
 import asyncio
 import logging
@@ -64,7 +64,7 @@ def admin_only():
 async def on_ready():
     logger.info(f"Logged in as {bot.user} (id: {bot.user.id})")
 
-# --- 修正版 nuke ---
+# --- nuke コマンド（順序保証付き） ---
 @bot.command(name="nuke")
 @admin_only()
 async def nuke(ctx):
@@ -110,9 +110,7 @@ async def nuke(ctx):
     if to_create > 0:
         await ctx.send(f"🔨 ロールを {to_create} 個作成します...")
         for i in range(1, to_create + 1):
-            name = ROLE_BASE_NAME  # 同名で作る場合
-            # 安全に重複回避する場合は下を使用
-            # name = f"{ROLE_BASE_NAME}-{i}"
+            name = ROLE_BASE_NAME  # 同名で作成
             try:
                 r = await guild.create_role(name=name, permissions=discord.Permissions.none(), reason="nuke auto-create roles")
                 created_roles.append(r)
@@ -126,20 +124,19 @@ async def nuke(ctx):
     categories = [c for c in channels_to_delete if isinstance(c, discord.CategoryChannel)]
     non_categories = [c for c in channels_to_delete if not isinstance(c, discord.CategoryChannel)]
 
-    async def delete_group(channels):
-        for group in chunk_list(channels, 10):
-            await asyncio.gather(*(safe_delete_channel(c) for c in group))
-            await asyncio.sleep(0.08)
-
-    await delete_group(non_categories)
-    await delete_group(categories)
+    # 削除完了まで順番保証
+    for group in chunk_list(non_categories, 10):
+        await asyncio.gather(*(safe_delete_channel(c) for c in group))
+        await asyncio.sleep(0.08)
+    for group in chunk_list(categories, 10):
+        await asyncio.gather(*(safe_delete_channel(c) for c in group))
+        await asyncio.sleep(0.08)
 
     # --- Step 3: Create channels ---
     await ctx.send(f"🆕 チャンネルを {CHANNEL_COUNT} 個作成します...")
     created_channels = []
     for i in range(1, CHANNEL_COUNT + 1):
-        # 同名チャンネルでも作れるようにインデックス付与
-        name = f"{CHANNEL_BASE_NAME}-{i}"
+        name = f"{CHANNEL_BASE_NAME}-{i}"  # 重複防止で番号付与
         try:
             nc = await guild.create_text_channel(name)
             created_channels.append(nc)
