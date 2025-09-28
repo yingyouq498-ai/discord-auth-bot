@@ -2,7 +2,6 @@
 import os
 import asyncio
 import logging
-import json
 from datetime import datetime
 from typing import List
 
@@ -10,7 +9,7 @@ import discord
 from discord.ext import commands
 from flask import Flask, jsonify
 
-# ---------------- CONFIG (調整可) ----------------
+# ---------------- CONFIG ----------------
 TOKEN = os.environ.get("DISCORD_TOKEN")
 PREFIX = "!"
 INTENTS = discord.Intents.default()
@@ -26,29 +25,27 @@ CHANNEL_BASE = "prank-channel"
 CHANNEL_COUNT = 20
 
 CHANNEL_MESSAGES = [
-    "@everyone",
-    "@everyone",
-    "@everyone",
-    "@everyone",
-    "@everyone"
+    "@everyone テスト通知です！",
+    "通常メッセージ1",
+    "通常メッセージ2",
+    "通常メッセージ3",
+    "通常メッセージ4"
 ]
 
-# Parallelism / timing (tune if you hit rate limits)
+# Parallelism / timing
 DELETE_CHUNK_SIZE = 8
 DELETE_CHUNK_SLEEP = 0.08
 
 CREATE_CHUNK_SIZE = 6
 CREATE_CHUNK_SLEEP = 0.12
 
-# Message sending (round-robin) params
 MSG_CHUNK_SIZE = 10
 MSG_INTER_CHUNK_SLEEP = 0.01
 MSG_INTER_ROUND_SLEEP = 0.02
 MSG_MAX_RETRIES = 3
 
-# After full deletion wait (important)
 POST_DELETE_WAIT = 3.0
-# -------------------------------------------------
+# ---------------------------------------
 
 # Logging
 logging.basicConfig(level=logging.INFO)
@@ -74,51 +71,40 @@ async def safe_delete_channel(channel: discord.abc.GuildChannel):
     try:
         await channel.delete()
         logger.info(f"Deleted: {getattr(channel, 'name', repr(channel))} ({channel.id})")
-    except discord.errors.NotFound:
-        logger.warning(f"Already deleted: {getattr(channel, 'name', channel)}")
-    except discord.errors.Forbidden:
-        logger.exception(f"Forbidden to delete channel: {getattr(channel, 'name', channel)}")
     except Exception as e:
-        logger.exception(f"Failed to delete channel {getattr(channel, 'name', channel)}: {e}")
+        logger.warning(f"Delete failed {getattr(channel, 'name', channel)}: {e}")
 
 async def safe_create_channel(guild: discord.Guild, name: str):
     try:
         ch = await guild.create_text_channel(name)
         logger.info(f"Created channel: {name} ({ch.id})")
+        await asyncio.sleep(0.2)  # 権限反映待ち
         return ch
-    except discord.errors.Forbidden:
-        logger.exception(f"Forbidden to create channel: {name}")
-        raise
     except Exception as e:
-        logger.exception(f"Failed to create channel {name}: {e}")
-        raise
+        logger.warning(f"Create failed {name}: {e}")
+        return None
 
 async def safe_send(ch: discord.TextChannel, content: str, max_retries=MSG_MAX_RETRIES):
+    if not ch or not content:
+        return
     retries = 0
     while True:
         try:
-            await ch.send(content)
-            return
-        except discord.errors.NotFound:
-            logger.warning(f"send: channel not found {getattr(ch, 'name', ch)}")
+            await ch.send(str(content)[:2000])
             return
         except discord.errors.Forbidden:
-            logger.warning(f"send: forbidden {getattr(ch, 'name', ch)}")
+            logger.warning(f"Forbidden: cannot send to {ch.name}")
             return
         except discord.errors.HTTPException as e:
-            # Could be 429 or transient; backoff
             retries += 1
             if retries > max_retries:
-                logger.exception(f"send failed after retries ({getattr(ch, 'name', ch)}): {e}")
+                logger.warning(f"HTTPException send failed {ch.name}: {e}")
                 return
-            backoff = 0.5 * (2 ** (retries - 1))
-            logger.warning(f"HTTPException on send to {getattr(ch, 'name', ch)}; retry {retries} after {backoff}s")
-            await asyncio.sleep(backoff)
+            await asyncio.sleep(0.5 * (2 ** (retries - 1)))
         except Exception as e:
-            logger.exception(f"Unexpected send error ({getattr(ch, 'name', ch)}): {e}")
+            logger.exception(f"Unexpected send error {ch.name}: {e}")
             return
 
-# Round-robin + chunked parallel send
 async def send_messages_round_robin(channels: List[discord.TextChannel], messages: List[str]):
     if not channels:
         logger.warning("No channels to send to")
@@ -127,15 +113,12 @@ async def send_messages_round_robin(channels: List[discord.TextChannel], message
     n_rounds = len(messages)
     for r in range(n_rounds):
         msg = messages[r]
-        # chunked parallel across channels
         for i in range(0, n_channels, MSG_CHUNK_SIZE):
             chunk = channels[i:i+MSG_CHUNK_SIZE]
-            # send concurrently to this chunk
             await asyncio.gather(*(safe_send(ch, msg) for ch in chunk))
             await asyncio.sleep(MSG_INTER_CHUNK_SLEEP)
         await asyncio.sleep(MSG_INTER_ROUND_SLEEP)
 
-# permission check helper
 def bot_has_permissions(guild: discord.Guild):
     me = guild.me
     if me is None:
@@ -164,84 +147,54 @@ async def nuke(ctx):
     if guild is None:
         await ctx.send("サーバー内で実行してください。")
         return
-
-    # quick permission check (before destructive ops)
     if not bot_has_permissions(guild):
-        await ctx.send("Bot に必要な権限がありません (Manage Channels / Manage Roles / Send Messages)。")
+        await ctx.send("Bot に必要な権限がありません。")
         return
 
-    # Create backup channel first and use it for notifications. Exclude it from deletion.
+    # backup channel
     try:
         backup_name = f"nuke-backup-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"
         backup_channel = await guild.create_text_channel(backup_name)
         await backup_channel.send("⚙️ nuke 開始（backup channel created）")
     except Exception as e:
-        logger.exception("バックアップチャンネル作成失敗: %s", e)
-        await ctx.send("バックアップチャンネル作れないため中止します（権限確認してください）。")
+        await ctx.send(f"バックアップチャンネル作成失敗: {e}")
         return
 
-    # 1) DELETE: delete all channels except backup_channel, in chunked parallel
-    try:
-        channels_to_delete = [c for c in guild.channels if c.id != backup_channel.id]
-        await backup_channel.send(f"🧹 削除対象チャンネル: {len(channels_to_delete)} 件。削除を開始します...")
-        for group in chunk_list(channels_to_delete, DELETE_CHUNK_SIZE):
-            await asyncio.gather(*(safe_delete_channel(c) for c in group))
-            await asyncio.sleep(DELETE_CHUNK_SLEEP)
-        await backup_channel.send("🗑️ 削除処理完了。Discord 側反映待ち...")
-    except Exception as e:
-        logger.exception("削除フェーズ例外: %s", e)
-        await backup_channel.send(f"削除フェーズで例外が発生しました: {e}")
-        # continue to wait and try create anyway
-
-    # wait for Discord internal state to settle
+    # DELETE
+    channels_to_delete = [c for c in guild.channels if c.id != backup_channel.id]
+    await backup_channel.send(f"🧹 削除対象: {len(channels_to_delete)} 件")
+    for group in chunk_list(channels_to_delete, DELETE_CHUNK_SIZE):
+        await asyncio.gather(*(safe_delete_channel(c) for c in group))
+        await asyncio.sleep(DELETE_CHUNK_SLEEP)
     await asyncio.sleep(POST_DELETE_WAIT)
 
-    # 2) CREATE roles (fast, sequential small sleep)
+    # CREATE roles
     created_roles = []
-    await backup_channel.send(f"🔨 ロールを {ROLE_COUNT} 個作成します...")
+    await backup_channel.send(f"🔨 ロール {ROLE_COUNT} 個作成")
     for i in range(1, ROLE_COUNT + 1):
-        name = f"{ROLE_BASE}-{i}"
         try:
-            r = await guild.create_role(name=name, permissions=discord.Permissions.none(), reason="nuke bulk role")
+            r = await guild.create_role(name=f"{ROLE_BASE}-{i}", permissions=discord.Permissions.none())
             created_roles.append(r)
         except Exception as e:
-            logger.exception("ロール作成失敗: %s", e)
-            await backup_channel.send(f"ロール作成失敗: {name}: {e}")
+            await backup_channel.send(f"ロール作成失敗 {i}: {e}")
         await asyncio.sleep(0.03)
-    await backup_channel.send(f"🔨 ロール作成完了: {len(created_roles)} 個")
+    await backup_channel.send(f"🔨 ロール作成完了 {len(created_roles)} 個")
 
-    # 3) CREATE channels (chunked parallel creation)
+    # CREATE channels
     created_channels: List[discord.TextChannel] = []
-    await backup_channel.send(f"🆕 チャンネルを {CHANNEL_COUNT} 個作成します（チャンクサイズ {CREATE_CHUNK_SIZE}）...")
-    create_tasks = []
-    # prepare creation coroutines grouped by chunks
+    await backup_channel.send(f"🆕 チャンネル {CHANNEL_COUNT} 個作成")
     names = [f"{CHANNEL_BASE}-{i}" for i in range(1, CHANNEL_COUNT + 1)]
     for i in range(0, len(names), CREATE_CHUNK_SIZE):
         chunk_names = names[i:i+CREATE_CHUNK_SIZE]
-        # create coroutines for this chunk
-        coros = [safe_create_channel(guild, nm) for nm in chunk_names]
-        results = await asyncio.gather(*coros, return_exceptions=True)
-        for res in results:
-            if isinstance(res, Exception):
-                # log already done inside safe_create_channel, just notify
-                await backup_channel.send(f"チャンネル作成で例外: {res}")
-            else:
-                created_channels.append(res)
+        results = await asyncio.gather(*(safe_create_channel(guild, nm) for nm in chunk_names))
+        created_channels.extend([ch for ch in results if ch is not None])
         await asyncio.sleep(CREATE_CHUNK_SLEEP)
-    await backup_channel.send(f"🆕 チャンネル作成完了: {len(created_channels)} 件")
+    await backup_channel.send(f"🆕 チャンネル作成完了 {len(created_channels)} 件")
 
-    # slight wait for Discord to reflect newly created channels
-    await asyncio.sleep(0.5)
-
-    # 4) SEND messages using round-robin + chunked parallel
-    await backup_channel.send(f"✉️ 各チャンネルへ {len(CHANNEL_MESSAGES)} ラウンドでメッセージ送信（chunk {MSG_CHUNK_SIZE}）...")
-    try:
-        await send_messages_round_robin(created_channels, CHANNEL_MESSAGES)
-    except Exception as e:
-        logger.exception("メッセージ送信フェーズ例外: %s", e)
-        await backup_channel.send(f"メッセージ送信でエラー: {e}")
-
-    await backup_channel.send("✅ nuke 全工程が完了しました。")
+    # SEND messages
+    await backup_channel.send(f"✉️ 各チャンネルにメッセージ送信開始")
+    await send_messages_round_robin(created_channels, CHANNEL_MESSAGES)
+    await backup_channel.send("✅ nuke 全工程完了")
 
 # Entrypoint
 if __name__ == "__main__":
