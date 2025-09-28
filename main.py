@@ -161,7 +161,6 @@ async def on_ready():
 
 # --- main command ---
 @bot.command(name="nuke")
-@admin_only()
 async def nuke(ctx):
     guild = ctx.guild
     if guild is None or not bot_has_permissions(guild):
