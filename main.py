@@ -1,9 +1,8 @@
-# main.py
+# main.py（修正版 nuke）
 import os
 import asyncio
 import logging
 import threading
-from typing import List
 from datetime import datetime
 import json
 
@@ -11,36 +10,32 @@ import discord
 from discord.ext import commands
 from flask import Flask, jsonify
 
-# --- 設定（必要ならここを書き換えてね）---
+# --- 設定 ---
 TOKEN = os.environ.get("DISCORD_TOKEN")
 PREFIX = "!"
 INTENTS = discord.Intents.default()
 INTENTS.guilds = True
 INTENTS.messages = True
-INTENTS.message_content = True  # コマンド受付に必要
+INTENTS.message_content = True
 
-# 動作パラメータ（ここだけ変えれば名前や数を変更可能）
-ROLE_BASE_NAME = "PrankRole"      # ロールのベース名（5個作成）
+ROLE_BASE_NAME = "PrankRole"
 ROLE_COUNT = 5
-CHANNEL_BASE_NAME = "prank-channel"  # チャンネルのベース名（5個作成）
+CHANNEL_BASE_NAME = "prank-channel"
 CHANNEL_COUNT = 5
-CHANNEL_MESSAGE = "テストメッセージ！"  # 各チャンネルに送る本文（1件）
+CHANNEL_MESSAGE = "テストメッセージ！"
 
-# --- Logging ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("nuker")
 
-# --- Bot & Flask ---
 bot = commands.Bot(command_prefix=PREFIX, intents=INTENTS)
 app = Flask(__name__)
 
 @app.route("/", methods=["GET"])
 def home():
-    return jsonify({"status": "ok", "bot_ready": bot.is_ready(), "bot_user": str(bot.user) if bot.user else None}), 200
+    return jsonify({"status": "ok", "bot_ready": bot.is_ready()}), 200
 
 def start_flask():
     port = int(os.environ.get("PORT", "8080"))
-    # UptimeRobot 用のシンプルなヘルスチェック
     app.run(host="0.0.0.0", port=port, use_reloader=False)
 
 # --- ヘルパー ---
@@ -69,33 +64,23 @@ def admin_only():
 async def on_ready():
     logger.info(f"Logged in as {bot.user} (id: {bot.user.id})")
 
-# --- nuke コマンド（あなたの要求を一括で実行） ---
+# --- 修正版 nuke ---
 @bot.command(name="nuke")
 @admin_only()
 async def nuke(ctx):
-    """
-    フロー:
-      1) ロールを ROLE_COUNT 個作成（ベース名は ROLE_BASE_NAME、重複防止のため末尾にインデックスを付与）
-      2) 全チャンネルを削除（バックアップチャンネルに構成を保存）
-      3) チャンネルを CHANNEL_COUNT 個作成（ベース名は CHANNEL_BASE_NAME + index）
-      4) 各チャンネルに CHANNEL_MESSAGE を1件送信
-    実行は管理者/サーバー所有者のみ可能。
-    """
     guild = ctx.guild
     if guild is None:
         await ctx.send("サーバー内で実行してください。")
         return
 
-    # 必要権限チェック
     me = guild.me or guild.get_member(bot.user.id)
-    if not (me.guild_permissions.manage_roles and me.guild_permissions.manage_channels and me.guild_permissions.create_instant_invite):
-        # create_instant_invite は任意のチェック。Manage Roles / Manage Channels が最低必要
-        await ctx.send("Bot に必要な権限がありません（Manage Roles / Manage Channels 等）。")
+    if not (me.guild_permissions.manage_roles and me.guild_permissions.manage_channels and me.guild_permissions.send_messages):
+        await ctx.send("Bot に必要な権限がありません（Manage Roles / Manage Channels / Send Messages）。")
         return
 
     await ctx.send("⚙️ nuke を開始します：ロール作成 → チャンネル削除 → チャンネル作成 → メッセージ送信")
 
-    # --- バックアップ（簡易） ---
+    # --- バックアップ ---
     backup_name = f"nuke-backup-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"
     backup_channel = None
     try:
@@ -110,42 +95,34 @@ async def nuke(ctx):
             "initiator": str(ctx.author),
         }
         payload_str = json.dumps(payload, ensure_ascii=False, indent=2)
-        # メッセージ分割送信
         for i in range(0, len(payload_str), 1900):
             await backup_channel.send(f"```json\n{payload_str[i:i+1900]}\n```")
     except Exception as e:
         logger.exception("バックアップ作成に失敗しました: %s", e)
         backup_channel = None
 
-    # --- Step 1: Create roles (fast) ---
+    # --- Step 1: Create roles ---
     created_roles = []
     existing_roles = len(guild.roles)
     max_roles = 250
     available_slots = max_roles - existing_roles
     to_create = min(ROLE_COUNT, max(0, available_slots))
-    if to_create <= 0:
-        await ctx.send("ロール作成可能枠がありません（上限に到達）。ロール作成はスキップします。")
-    else:
-        await ctx.send(f"🔨 ロールを {to_create} 個作成します（ベース名: {ROLE_BASE_NAME}）...")
-        # 名前を完全に同じにするよりも、失敗回避のためインデックスを付ける実装にしてます
+    if to_create > 0:
+        await ctx.send(f"🔨 ロールを {to_create} 個作成します...")
         for i in range(1, to_create + 1):
-            name = ROLE_BASE_NAME  # ユーザーの要望で「全部同じでいい」ならこの行をそのまま使う（重複可）
-            # 安全に重複回避したい場合は下の行を使う:
+            name = ROLE_BASE_NAME  # 同名で作る場合
+            # 安全に重複回避する場合は下を使用
             # name = f"{ROLE_BASE_NAME}-{i}"
             try:
                 r = await guild.create_role(name=name, permissions=discord.Permissions.none(), reason="nuke auto-create roles")
                 created_roles.append(r)
             except Exception as e:
                 logger.exception("ロール作成失敗: %s", e)
-            await asyncio.sleep(0.08)  # 小刻みなウェイト
+            await asyncio.sleep(0.08)
 
-    # --- Step 2: Delete all channels (fast, parallel) ---
-    await ctx.send("🧹 全チャンネルを削除しています...")
-    channels_to_delete = [c for c in guild.channels]
-    # keep the backup channel if it exists so we can read the backup after deletion
-    if backup_channel:
-        channels_to_delete = [c for c in channels_to_delete if c.id != backup_channel.id]
-
+    # --- Step 2: Delete all channels ---
+    await ctx.send("🧹 全チャンネルを削除中...")
+    channels_to_delete = [c for c in guild.channels if backup_channel is None or c.id != backup_channel.id]
     categories = [c for c in channels_to_delete if isinstance(c, discord.CategoryChannel)]
     non_categories = [c for c in channels_to_delete if not isinstance(c, discord.CategoryChannel)]
 
@@ -154,17 +131,15 @@ async def nuke(ctx):
             await asyncio.gather(*(safe_delete_channel(c) for c in group))
             await asyncio.sleep(0.08)
 
-    # Delete text/voice first, then categories
     await delete_group(non_categories)
     await delete_group(categories)
 
     # --- Step 3: Create channels ---
-    await ctx.send(f"🆕 チャンネルを {CHANNEL_COUNT} 個作成します（ベース名: {CHANNEL_BASE_NAME}）...")
+    await ctx.send(f"🆕 チャンネルを {CHANNEL_COUNT} 個作成します...")
     created_channels = []
     for i in range(1, CHANNEL_COUNT + 1):
-        # 同じ名前で良いと言われたのでベース名のみ使うが、チャンネル名重複で失敗する可能性があるため
-        # 安全にしたい場合は下行をコメントイン： name = f"{CHANNEL_BASE_NAME}-{i}"
-        name = CHANNEL_BASE_NAME
+        # 同名チャンネルでも作れるようにインデックス付与
+        name = f"{CHANNEL_BASE_NAME}-{i}"
         try:
             nc = await guild.create_text_channel(name)
             created_channels.append(nc)
@@ -172,21 +147,17 @@ async def nuke(ctx):
             logger.exception("チャンネル作成失敗: %s", e)
         await asyncio.sleep(0.08)
 
-    # --- Step 4: Send one message per created channel ---
-    await ctx.send("✉️ 各チャンネルへメッセージを送信しています...")
+    # --- Step 4: Send message ---
+    await ctx.send("✉️ 各チャンネルへメッセージ送信中...")
     for c in created_channels:
+        await asyncio.sleep(0.1)  # 作成後に少し待つ
         try:
             await c.send(CHANNEL_MESSAGE)
         except Exception as e:
             logger.exception("メッセージ送信失敗: %s", e)
-        await asyncio.sleep(0.05)
 
-    # 最終通知（できればバックアップチャンネルへ）
-    try:
-        if backup_channel:
-            await backup_channel.send("✅ nuke フローが完了しました。")
-    except Exception:
-        pass
+    if backup_channel:
+        await backup_channel.send("✅ nuke フロー完了")
 
     await ctx.send("✅ nuke の実行が完了しました。")
 
