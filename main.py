@@ -26,11 +26,11 @@ CHANNEL_BASE = "prank-channel"
 CHANNEL_COUNT = 20
 
 CHANNEL_MESSAGES = [
-    "メッセージ1: こんにちは！",
-    "メッセージ2: テストです。",
-    "メッセージ3: お遊びモード。",
-    "メッセージ4: これで終わり。",
-    "メッセージ5: またね！"
+    "@everyone",
+    "@everyone",
+    "@everyone",
+    "@everyone",
+    "@everyone"
 ]
 
 # Parallelism / timing (tune if you hit rate limits)
