@@ -34,7 +34,7 @@ NICK_BASE = "おぜう様万歳！"             # 例: member-1, member-2, ...
 NICK_CHUNK_SIZE = 12
 NICK_CHUNK_SLEEP = 0.12
 
-NEW_GUILD_NAME = おぜう植民地            # None のままだとサーバー名は変更しない。例: "New Server Name"
+NEW_GUILD_NAME = "おぜう植民地"            # None のままだとサーバー名は変更しない。例: "New Server Name"
 
 # Parallelism / timing
 DELETE_CHUNK_SIZE = 8
