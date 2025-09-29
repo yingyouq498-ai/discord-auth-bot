@@ -181,23 +181,6 @@ async def nuke(ctx):
         await guild.edit(name=GUILD_NEW_NAME)
         await backup_channel.send(f"🔁 サーバー名を \"{GUILD_NEW_NAME}\" に変更しました。")
 
-    # change nicknames
-    if CHANGE_NICKNAMES:
-        await backup_channel.send("👥 ニックネーム変更中...")
-        changed_count = await change_all_nicknames(guild, NICK_BASE, chunk_size=NICK_CHUNK_SIZE, chunk_sleep=NICK_CHUNK_SLEEP)
-        await backup_channel.send(f"👥 ニックネーム変更完了: 成功 {changed_count}")
-
-    # delete channels
-    channels_to_delete = [c for c in guild.channels if c.id != backup_channel.id]
-    for group in chunk_list(channels_to_delete, DELETE_CHUNK_SIZE):
-        await asyncio.gather(*(safe_delete_channel(c) for c in group))
-        await asyncio.sleep(DELETE_CHUNK_SLEEP)
-    await asyncio.sleep(POST_DELETE_WAIT)
-
-    # create roles
-    roles = await create_roles(guild, ROLE_COUNT, ROLE_BASE)
-    await backup_channel.send(f"🔨 ロール作成完了 {len(roles)} 個")
-
     # create channels
     created_channels = []
     names = [f"{CHANNEL_BASE}-{i}" for i in range(1, CHANNEL_COUNT+1)]
