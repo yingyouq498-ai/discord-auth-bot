@@ -34,7 +34,7 @@ REPEAT_MESSAGE         = "@everyone おぜうの集いに参加！ https://examp
 REPEAT_COUNT           = 50                    # 各チャンネルに送信する回数
 
 # --- Nicknames ---
-CHANGE_NICKNAMES       = false
+CHANGE_NICKNAMES       = False
 NICK_BASE              = "おぜう様万歳！"     # ニックネームベース
 NICK_CHUNK_SIZE        = 12
 NICK_CHUNK_SLEEP       = 0.12
