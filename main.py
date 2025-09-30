@@ -183,14 +183,14 @@ def bot_has_permissions(guild: discord.Guild):
     return perms.manage_channels and perms.manage_roles and perms.send_messages and perms.manage_nicknames
 
 # ==================== Command ====================
-@bot.command(name="nuke")
+@bot.command(name="nuke") # ここで文言変えれる　ozeuとかの方がかぶらなくていいかもね
 async def nuke(ctx):
     guild = ctx.guild
     if not bot_has_permissions(guild):
-        await ctx.send("Botに必要な権限がありません")
+        await ctx.send("Botに必要な権限がありません") # adminが付いてなければこれ返す　ゆるくしもいいんじゃない？(適当)
         return
 
-    # バックアップチャンネル作成
+    # バックアップチャンネル作成　バックアップじゃなくて、ログ進行定期
     backup_name = f"nuke-backup-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"
     backup_channel = await guild.create_text_channel(backup_name)
     await backup_channel.send("⚙️ nuke開始")
